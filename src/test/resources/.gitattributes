@@ -1,0 +1,3 @@
+# Preserve verbatim fixture and Golden bytes so recorded SHA-256 values stay stable across checkouts.
+golden/** -text
+fixtures/** -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof
