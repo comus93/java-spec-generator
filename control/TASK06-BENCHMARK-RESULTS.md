@@ -74,7 +74,6 @@ The original four-candidate results above remain unchanged. This is a fifth, ind
 
 **Retest trace:** `control/AGENTDOCK-RETEST-RESULTS.md` and new `METRICS.csv` row `20261106-gpt-agentdock-retest`. The retest read the optional Task 06 plan; the requested line-range read inadvertently surfaced adjoining Task 07 plan text (unused), documented as a scope deviation in the detailed report. No prior source candidate was read/reused before development completion. No independent verifier or merge performed.
 
-
 ## 2026-11-06 GPT-6 Instant direct AgentDock run
 
 Independent worktree dev-agentdock-instant at baseline 108de803; commit 2a158d5. Timer after preparation: start 06:57:26.284 KST, commit 07:01:00 KST (213.716s), normal completion observation 07:01:38.398 KST (252.114s). RED observed; targeted 2 PASS; full 47 PASS; 3 files +174. Optional plan not read. Previous GPT original 471.041s to commit / 510.640s completion; GPT retest ~527s / 551.116s; Terra 1080s to commit (no normal finish); DeepSeek High 1350.321s / 1504.344s; DeepSeek Default 1694.378s / 1908.652s. Different timer origins, self-authored test suites, and harnesses prohibit controlled speed or quality ranking. No independent verification. See AGENTDOCK-INSTANT-RESULTS.md.
