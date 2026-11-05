@@ -2,12 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** DRAFT / 사용자 계획서 검토·승인 대기 (2026-11-05)
+**Status:** **APPROVED / 사용자 승인 2026-11-05**
 **Goal:** 승인된 Java/JSP 소스 기반 Excel 프로그램 사양서 생성기를 AI·네트워크·외부 분석 실행기 없이 Windows GUI/CLI로 제공한다.
 **Architecture:** Java 17+ 단일 Maven 애플리케이션에서 GUI와 CLI가 동일한 JobRunner를 사용한다. JavaParser·PMD JSP Parser가 추출한 소스 사실을 공통 WorkbookModel로 매핑하고, Apache POI가 `.xls`·`.xlsx`를 생성한다. 모듈 목록 순서에 따라 폴더별로 독립 실행하고 출력 파일은 순차 덮어쓴다.
 **Tech Stack:** Java 21 개발 JDK / `--release 17`, Maven, JavaParser 3.28.2, PMD JSP 7.29.0, Apache POI HSSF/XSSF, Jackson JSON, JUnit 5, Swing, Maven Shade, `jpackage`.
 **Spec:** `docs/superpowers/specs/2026-11-05-program-spec-generator-design.md` (**APPROVED 2026-11-05**, commit `b39c0ce`).
-**환경 준비 상태:** 로컬 JDK·Maven 설치 경로와 실행 명령은 **사용자가 환경을 구성한 후 확인하여 계획서에 추가**한다. 현재 환경 경로를 가정하거나 고정하지 않는다.
+**개발 환경 확정:** **MCSVR 머신** (`C:\Workspace\github\java-spec-generator`)에서 개발한다. 사용자 지정 JDK: `C:\dev\jdk-21\bin` (`JAVA_HOME=C:\dev\jdk-21`). **실행 확인:** `java` / `javac` 모두 Eclipse Temurin `21.0.13` (2026-11-05). Maven 실행 경로·버전은 Task 01 착수 시 확인한다.
 
 ## Global Constraints
 
@@ -21,7 +21,7 @@
 8. **보안:** 승인된 파일을 읽기 전용 분석. 사용자 소스를 네트워크 전송·콘솔 덤프·로그 전문 출력하지 않는다. 심볼릭 링크/정션으로 소스 범위 밖 파일을 따라가지 않는다. 출력 루트가 소스 내부이면 시작 전에 차단한다.
 9. **검증:** Task마다 **해당 변경 영향만** TDD로 검증하고, 마지막 Task에서만 전체 통합/오프라인/배포 검증. 각 Task는 별도 검토·승인을 받을 수 있도록 독립 완료 조건과 변경 파일이 있다. 실패를 덮거나 테스트를 삭제하지 않는다.
 10. **기준본:** 승인된 4개 **실제** 그레이스케일 Excel을 확보·해시 고정해야 한다. 파일 부재를 임의 생성물로 대체하거나 Golden 통과를 주장하지 않는다.
-11. **상태:** 이 계획은 사용자가 별도 승인해야 시행한다. 사용자가 계획 승인 **후** Paseo Orchestrator에 스펙+계획 리뷰, Task 단위 개발/검증을 위임할 예정이다. **계획 작성 단계에서 Paseo 실행·코드 구현 금지**.
+11. **상태:** **사용자 계획 승인 완료(2026-11-05)**. 후속 사용자 지시에 따라 Paseo Orchestrator에 승인 스펙+승인 계획서의 리뷰 및 Task별 개발·검증을 위임한다. 본 문서 승인만으로 Paseo를 실행하거나 구현을 시작하지 않는다.
 
 ## Review Focus
 
@@ -81,7 +81,12 @@ scripts/verify-release.ps1
 **지원 명령 계약(본 계획에서 확정):**
 
 ```powershell
-# 아래 명령은 환경 구성 완료 후 실행한다. 실제 JDK/Maven 경로는 사용자 설정 후 본 계획에 별도 기록한다.
+# MCSVR Windows PowerShell에서 실행. 아래 경로는 사용자 지정 JDK 설치 위치.
+$env:JAVA_HOME = 'C:\dev\jdk-21'
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+& "$env:JAVA_HOME\bin\java.exe" -version
+& "$env:JAVA_HOME\bin\javac.exe" -version
+# Maven은 Task 01 착수 시 설치/실행 경로를 점검하고 준비한다.
 mvn -q -DskipTests package
 mvn -q test
 java -jar target/spec-generator.jar gui
@@ -102,7 +107,7 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - Produces: Maven Java 17 컴파일·JUnit 테스트 실행, 고정 기준 파일과 검증 가능한 해시.
 
 - [ ] **Step 1: 실패하는 `BootstrapTest.goldenFilesExistWithRecordedSha256()` 작성.** 네 파일의 실제 존재 및 manifest 해시 일치를 검사. 누락되면 명시적 FAIL.
-- [ ] **Step 2: `mvn -q -Dtest=BootstrapTest test` 실행하여 테스트 RED 확인.** 프로젝트가 없는 상태면 빌드 실패도 준비 단계의 RED로 기록.
+- [ ] **Step 2: MCSVR에서 `C:\dev\jdk-21\bin\java.exe -version` 및 `C:\dev\jdk-21\bin\javac.exe -version`으로 JDK 21 설치 확인 후, Maven 경로와 실행 가능 여부를 확인한다.** `JAVA_HOME=C:\dev\jdk-21`을 설정하고 `mvn -q -Dtest=BootstrapTest test` RED 확인. 제품 프로젝트 파일이 없어서 실패한 경우 테스트 실패와 환경 미설치를 구분해 기록한다.
 - [ ] **Step 3: Maven 설정과 fixture 반입.** `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, `exec-maven-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON, SLF4J 로거를 **명시 버전 고정**. 분석기 2종의 API와 Java 17 호환성은 제품 빌드·테스트에서 직접 확인한다. 참고 fixture는 `SpringMvcStepByStep`의 고정 커밋 `ea85bf29e6ce4bdbc62eab06b97ceb66e6f5028f`에서 원문 확보 후 해시·라이선스 검토; 이 외 자작 미니 fixture는 별도 구분. Golden은 승인된 업로드 **실물**과 해시를 일치시켜서만 반입.
 - [ ] **Step 4: `mvn -q -Dtest=BootstrapTest test` → PASS, `mvn -q -DskipTests package` → PASS 확인.** 기준 Excel을 확보할 수 없으면 RED 상태를 숨기지 말고 Golden 게이트를 BLOCKED로 기록하고 해당 기준본 테스트가 필요한 Task의 통과를 주장하지 않는다.
 - [ ] **Step 5: 변경 영향 테스트·스테이징 확인 후 commit.** `git add pom.xml .gitignore src/test docs/test`; `git diff --cached --check`; `git commit -m "build: bootstrap Java 17 generator and golden fixtures"`. 임시 개발 파일을 add하지 않는다.
@@ -328,4 +333,4 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - **계약**: Task 02 `JobConfig`, Task 03 `SourceJob`, Task 04/06 `SourceFacts`, Task 07 `WorkbookModel`, Task 08/09 `SpecMapper`, Task 10 `JobRunner`만 경계를 넘는다.
 - **Golden blocker**: 네 실제 Excel을 재확보하지 못한 경우 Task 01·12에 명시적으로 BLOCKED를 남기고 성공을 가장하지 않는다. 파일이 없는 상태에서 최초 테스트가 완전히 통과할 수 있다고 약속하지 않는다.
 - **보안**: 소스 컴파일·동적 실행·외부 프로세스·런타임 다운로드·AI 전송은 금지.
-- **사용자 계획 승인 대기**: 이 문서를 GitHub에 저장·검토하는 것만 현재 요청 범위다. **Paseo 리뷰 및 구현은 계획 확정 후에만 요청받아 실행**한다.
+- **계획 사용자 승인 완료(2026-11-05)**: 개발 머신은 MCSVR, JDK는 `C:\dev\jdk-21\bin`. **Paseo 리뷰 및 구현은 사용자의 후속 실행 지시를 받은 후에만 진행**한다.
