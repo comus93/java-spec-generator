@@ -1,0 +1,7 @@
+# Golden Excel SHA-256 baseline (2026-11-05 user-approved design-oriented revision)
+# Paths are relative to repository root; generated outputs must match content/style semantics, not XLS/XLSX bytes.
+# Source of truth: docs/golden/*.xlsx; previous ChatGPT ZIP hashes are obsolete.
+efee61d760a7216750c5bca6ecc290b646d83d52ecc0a8d7eb4e934754392173  docs/golden/JavaParser_TodoController_ProgramSpec_Grayscale.xlsx
+92e13b32500b6af3b5e0dd2b54861d335594420f34a1548d8c1a2b345e069f86  docs/golden/JavaParser_TodoService_ProgramSpec_Grayscale.xlsx
+67f32242c30b68c8ba12a8565fea5719b4fa66fc61b73c889b4d5d85c0158a93  docs/golden/PMD_JSP_todo_ProgramSpec_Grayscale.xlsx
+7670f88ff379511a498ba3baa96e470c949d200b4c471fd8c7050f607976c840  docs/golden/PMD_JSP_list-todos_ProgramSpec_Grayscale.xlsx
