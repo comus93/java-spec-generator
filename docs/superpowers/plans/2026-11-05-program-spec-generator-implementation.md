@@ -7,7 +7,7 @@
 **Architecture:** Java 17+ 단일 Maven 애플리케이션에서 GUI와 CLI가 동일한 JobRunner를 사용한다. JavaParser·PMD JSP Parser가 추출한 소스 사실을 공통 WorkbookModel로 매핑하고, Apache POI가 `.xls`·`.xlsx`를 생성한다. 모듈 목록 순서에 따라 폴더별로 독립 실행하고 출력 파일은 순차 덮어쓴다.
 **Tech Stack:** Java 21 개발 JDK / `--release 17`, Maven, JavaParser 3.28.2, PMD JSP 7.29.0, Apache POI HSSF/XSSF, Jackson JSON, JUnit 5, Swing, Maven Shade, `jpackage`.
 **Spec:** `docs/superpowers/specs/2026-11-05-program-spec-generator-design.md` (**APPROVED 2026-11-05**, commit `b39c0ce`).
-**개발 환경 확정:** **MCSVR 머신** (`C:\Workspace\github\java-spec-generator`)에서 개발한다. 사용자 지정 JDK: `C:\dev\jdk-21\bin` (`JAVA_HOME=C:\dev\jdk-21`). **실행 확인:** `java` / `javac` 모두 Eclipse Temurin `21.0.13` (2026-11-05). Maven 실행 경로·버전은 Task 01 착수 시 확인한다.
+**개발 환경 확정:** **MCSVR 머신** (`C:\Workspace\github\java-spec-generator`)에서 개발한다. 사용자 지정 JDK: `C:\dev\jdk-21\bin` (`JAVA_HOME=C:\dev\jdk-21`). **2026-11-05 Paseo 사전 점검 확인:** `java` / `javac` Eclipse Temurin `21.0.13`, Maven `3.9.16` 경로 `C:\dev\apache-maven-3.9.16\bin\mvn.cmd` (해당 세션 PATH에 등록되지 않았음).
 
 ## Global Constraints
 
@@ -20,7 +20,7 @@
 7. **출력:** 소스×등록 모듈별 Excel 1개 생성 시도, 기본 `.xls`, 옵션 `.xlsx`. Java 정확히 **9시트**, JSP 정확히 **5시트**, `01_표제부` 10항목. 2행 분석기 설명 금지. 회색조/검정/흰색만 사용. 불확실한 필드·호출 대상·설명은 공란.
 8. **보안:** 승인된 파일을 읽기 전용 분석. 사용자 소스를 네트워크 전송·콘솔 덤프·로그 전문 출력하지 않는다. 심볼릭 링크/정션으로 소스 범위 밖 파일을 따라가지 않는다. 출력 루트가 소스 내부이면 시작 전에 차단한다.
 9. **검증:** Task마다 **해당 변경 영향만** TDD로 검증하고, 마지막 Task에서만 전체 통합/오프라인/배포 검증. 각 Task는 별도 검토·승인을 받을 수 있도록 독립 완료 조건과 변경 파일이 있다. 실패를 덮거나 테스트를 삭제하지 않는다.
-10. **기준본:** 승인된 4개 **실제** 그레이스케일 Excel을 확보·해시 고정해야 한다. 파일 부재를 임의 생성물로 대체하거나 Golden 통과를 주장하지 않는다.
+10. **기준본:** 승인된 4개 **실제** 그레이스케일 Excel은 2026-11-05 ChatGPT 대화 첨부 ZIP에서 확인되었다. 원본 4개와 해시는 아래 **Golden Sample 원본 위치 및 반입 절차**를 따른다. 아직 MCSVR 저장소로 복사되었다는 뜻은 아니다. 임의 재생성·대체 금지.
 11. **상태:** **사용자 계획 승인 완료(2026-11-05)**. 후속 사용자 지시에 따라 Paseo Orchestrator에 승인 스펙+승인 계획서의 리뷰 및 Task별 개발·검증을 위임한다. 본 문서 승인만으로 Paseo를 실행하거나 구현을 시작하지 않는다.
 
 ## Review Focus
@@ -86,14 +86,34 @@ $env:JAVA_HOME = 'C:\dev\jdk-21'
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 & "$env:JAVA_HOME\bin\java.exe" -version
 & "$env:JAVA_HOME\bin\javac.exe" -version
-# Maven은 Task 01 착수 시 설치/실행 경로를 점검하고 준비한다.
-mvn -q -DskipTests package
-mvn -q test
+# MCSVR 사전 점검에서 확인된 Maven 절대 경로와 세션 PATH 설정.
+$env:PATH = "C:\dev\apache-maven-3.9.16\bin;$env:PATH"
+$mvn = 'C:\dev\apache-maven-3.9.16\bin\mvn.cmd'
+& $mvn -version
+& $mvn -q -DskipTests package
+& $mvn -q test
 java -jar target/spec-generator.jar gui
 java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 ```
 
 명령행 종료 코드: `0` 전부 성공/대상 없음, `1` 작업 중 일부 파일 오류, `2` 인수·설정·입력 경로 오류. 출력 파일의 내용이 성공적으로 생성되기 전에 성공으로 보고하지 않는다.
+
+## Golden Sample 원본 위치 및 반입 절차 (2026-11-05 확인)
+
+- **현재 실제 원본:** 이 프로젝트의 ChatGPT 대화 첨부 파일 `JavaParser_PMD_JSP_ProgramSpec_Samples_Grayscale.zip` (ChatGPT 세션 경로: `/mnt/data/JavaParser_PMD_JSP_ProgramSpec_Samples_Grayscale.zip`). 사용자용 링크: `sandbox:/mnt/data/JavaParser_PMD_JSP_ProgramSpec_Samples_Grayscale.zip`.
+- **중요:** 위 `/mnt/data` 및 `sandbox:` 경로는 **ChatGPT 실행 환경 전용**이며 **MCSVR의 로컬 경로가 아니다. Paseo나 Codex가 그 경로를 직접 읽을 수 있다고 가정하지 않는다.** MCSVR로 파일을 전달하기 전에는 Task 01 Golden 게이트가 BLOCKED다.
+- **MCSVR 반입 예정 경로(복사 후 확인):** `C:\Workspace\github\java-spec-generator\.local\incoming\JavaParser_PMD_JSP_ProgramSpec_Samples_Grayscale.zip`. 현재 존재를 보장하지 않는 *목표 위치*다. ZIP을 사용자가 ChatGPT에서 내려받아 이 경로에 배치하거나, 검증 가능한 승인된 전달 방식을 사용한다.
+- **ZIP SHA-256:** `12073efb08de8504d8ddbe701c9f1b7edfc56d0085198900c6487204801c6a98`.
+- **실제 Golden 목적지:** 검증된 ZIP 안의 아래 4개 Excel을 `src/test/resources/golden/`에 풀고, `docs/test/golden-manifest.sha256`에 원본 파일별 해시를 기록한다.
+
+| ZIP 내부 원본 파일명 | SHA-256 (원본 바이트) |
+|---|---|
+| `JavaParser_TodoController_ProgramSpec_Grayscale.xlsx` | `f3e2e9eb9b52d845d5ef20f6f7a1e15179d83b672ca8f90a654d829e429d149d` |
+| `JavaParser_TodoService_ProgramSpec_Grayscale.xlsx` | `5c3f9361031074921e92b6d970b3515998469409952793d3bfa998da5eb8201b` |
+| `PMD_JSP_todo_ProgramSpec_Grayscale.xlsx` | `776d9c750dc3450fb09d53e55f5d0fbf0ecfd2dcbe1361a630bc34bd19330bea` |
+| `PMD_JSP_list-todos_ProgramSpec_Grayscale.xlsx` | `a9928b4f3886605719a6712f318a28fcbb9b5468fe3252ffce498c0dcf02933f` |
+
+**Task 01 재개 게이트:** MCSVR의 ZIP 실물 존재 확인 → ZIP SHA-256 일치 → 대상 ZIP 안에 위 4개 파일만 있는지 확인 → 해시 검증 후 `src/test/resources/golden/`에 반입 → BootstrapTest RED/GREEN. 하나라도 실패하거나 ZIP이 여전히 전달되지 않았으면 BLOCKED 유지한다. **원본 경로만 문서에 기입한 것으로 블로커가 해소된 것은 아니다.**
 
 ## Task 01: Maven 제품 뼈대·JRE 17 게이트·Golden 자산 기준선
 
@@ -108,7 +128,7 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 
 - [ ] **Step 1: 실패하는 `BootstrapTest.goldenFilesExistWithRecordedSha256()` 작성.** 네 파일의 실제 존재 및 manifest 해시 일치를 검사. 누락되면 명시적 FAIL.
 - [ ] **Step 2: MCSVR에서 `C:\dev\jdk-21\bin\java.exe -version` 및 `C:\dev\jdk-21\bin\javac.exe -version`으로 JDK 21 설치 확인 후, Maven 경로와 실행 가능 여부를 확인한다.** `JAVA_HOME=C:\dev\jdk-21`을 설정하고 `mvn -q -Dtest=BootstrapTest test` RED 확인. 제품 프로젝트 파일이 없어서 실패한 경우 테스트 실패와 환경 미설치를 구분해 기록한다.
-- [ ] **Step 3: Maven 설정과 fixture 반입.** `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, `exec-maven-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON, SLF4J 로거를 **명시 버전 고정**. 분석기 2종의 API와 Java 17 호환성은 제품 빌드·테스트에서 직접 확인한다. 참고 fixture는 `SpringMvcStepByStep`의 고정 커밋 `ea85bf29e6ce4bdbc62eab06b97ceb66e6f5028f`에서 원문 확보 후 해시·라이선스 검토; 이 외 자작 미니 fixture는 별도 구분. Golden은 승인된 업로드 **실물**과 해시를 일치시켜서만 반입.
+- [ ] **Step 3: Maven 설정과 fixture 반입.** 위 Golden ZIP 반입·해시 검사 게이트를 선행한다. `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, `exec-maven-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON, SLF4J 로거를 **명시 버전 고정**. 분석기 2종의 API와 Java 17 호환성은 제품 빌드·테스트에서 직접 확인한다. 참고 fixture는 `SpringMvcStepByStep`의 고정 커밋 `ea85bf29e6ce4bdbc62eab06b97ceb66e6f5028f`에서 원문 확보 후 해시·라이선스 검토; 이 외 자작 미니 fixture는 별도 구분. Golden은 승인된 업로드 **실물**과 해시를 일치시켜서만 반입.
 - [ ] **Step 4: `mvn -q -Dtest=BootstrapTest test` → PASS, `mvn -q -DskipTests package` → PASS 확인.** 기준 Excel을 확보할 수 없으면 RED 상태를 숨기지 말고 Golden 게이트를 BLOCKED로 기록하고 해당 기준본 테스트가 필요한 Task의 통과를 주장하지 않는다.
 - [ ] **Step 5: 변경 영향 테스트·스테이징 확인 후 commit.** `git add pom.xml .gitignore src/test docs/test`; `git diff --cached --check`; `git commit -m "build: bootstrap Java 17 generator and golden fixtures"`. 임시 개발 파일을 add하지 않는다.
 
@@ -320,7 +340,11 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 
 ## Paseo Review / Delegation Handoff (계획 승인 **후**)
 
-1. **Paseo 투입 자료**: 승인 Spec 경로와 해시, 이 Implementation Plan 경로와 해시, 참조 Golden 4종 해시 및 테스트 fixture 출처, `main` 기준 commit. 로컬 JDK·Maven 환경 정보는 사용자의 후속 설정 공유 이후에 추가한다.
+**호출 정책 (다른 프로젝트에도 적용할 Codex 전역 규칙은 MCSVR `C:\Users\comus\.codex\AGENTS.md` 참조):** Orchestrator가 MCSVR 내부에서 실행 중이면 로컬 파일·Git·JDK/Maven·터미널 작업은 기본 Shell로 수행한다. 같은 머신의 터미널을 쓰기 위해 `Paseo-MCSVR` 플러그인을 경유하지 않는다. Paseo API는 실제 하위 에이전트 위임·상태 관리 등 Paseo 고유 작업에 필요한 경우에만 사용한다.
+
+**2026-11-05 별도 플랫폼 문제:** Paseo `list_workspaces` 정상, 관리형 `create_terminal`은 `Terminal worker is not running`으로 실패(기존 Orchestrator 로그에서는 `Transport closed`). 이는 Golden Sample 부재와 별개이며, 관리형 터미널 worker가 정상화되었다는 증거 없이는 해당 기능을 정상으로 간주하지 않는다. 로컬 Shell로 가능한 업무는 플러그인 없이 실행하고, Paseo 고유 에이전트 위임 경로는 위임 전에 별도 상태 확인한다.
+
+1. **Paseo 투입 자료**: 승인 Spec 경로와 해시, 이 Implementation Plan 경로와 해시, 위 **Golden Sample 원본 위치 및 반입 절차**의 ZIP·4개 해시, 테스트 fixture 출처, `main` 기준 commit. Golden 파일은 ChatGPT 대화 첨부 원본이 MCSVR로 전달된 뒤에만 실제 경로를 사용하는 것으로 처리한다.
 2. **1차 단계는 리뷰**: Paseo가 (a) 승인 요구사항 전부가 Task/AC에 매핑됐는지, (b) 작업 순서·인터페이스와 의존성이 실행 가능한지, (c) 보안/오프라인 경계, (d) 기준본 미확보 리스크, (e) Java17·JSP 레거시 호환성을 검토. **리뷰 중 제품 코드를 수정하지 않는다.**
 3. **리뷰 결과 보고**: 오류/모호성은 구체적인 스펙·Task ID와 수정안으로 사용자에게 보고. 승인된 요구사항 자체를 일방 변경하지 않는다. 계획 변경이 필요하면 검토받고 plan revision을 기록한다.
 4. **개발 위임**: 사용자 지시가 있으면 Task 01→12를 **각 Task의 Red→Green→Refactor→커밋→변경 영향 검증** 게이트로 수행. 무단 차기 Task 전개 여부는 사용자의 그 시점 실행 지시를 따른다. 동일 파일에 여러 에이전트가 동시에 쓰지 않는다.
@@ -331,6 +355,6 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 
 - **범위**: 단일 제품 코어+두 독립 분석 경로+두 실행 표면. Java 및 JSP는 개별 테스트로 검증하고 단일 공유 출력·실행 코어로 통합한다. 이 범위를 여러 중복 스펙으로 재작성하지 않는다.
 - **계약**: Task 02 `JobConfig`, Task 03 `SourceJob`, Task 04/06 `SourceFacts`, Task 07 `WorkbookModel`, Task 08/09 `SpecMapper`, Task 10 `JobRunner`만 경계를 넘는다.
-- **Golden blocker**: 네 실제 Excel을 재확보하지 못한 경우 Task 01·12에 명시적으로 BLOCKED를 남기고 성공을 가장하지 않는다. 파일이 없는 상태에서 최초 테스트가 완전히 통과할 수 있다고 약속하지 않는다.
+- **Golden blocker**: 원본 ZIP은 ChatGPT 대화 첨부로 확인했으나 **MCSVR에 실제 전달되었는지 미확인**이다. Task 01·12는 MCSVR에서 원본·해시 검증까지 수행되기 전 BLOCKED이며, 파일 부재를 가짜 기준본으로 대체하거나 통과를 주장하지 않는다.
 - **보안**: 소스 컴파일·동적 실행·외부 프로세스·런타임 다운로드·AI 전송은 금지.
 - **계획 사용자 승인 완료(2026-11-05)**: 개발 머신은 MCSVR, JDK는 `C:\dev\jdk-21\bin`. **Paseo 리뷰 및 구현은 사용자의 후속 실행 지시를 받은 후에만 진행**한다.
