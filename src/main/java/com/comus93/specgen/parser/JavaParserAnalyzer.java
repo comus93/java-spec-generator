@@ -3,9 +3,11 @@ package com.comus93.specgen.parser;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import com.comus93.specgen.facts.JavaFacts;
 import com.comus93.specgen.facts.JavaFacts.ImportFact;
@@ -108,10 +110,28 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
         List<ImportFact> imports = new ArrayList<>();
         unit.getImports().forEach(importDeclaration -> {
             String importPath = importDeclaration.getNameAsString();
+            if (importDeclaration.isAsterisk()) {
+                importPath += ".*";
+            }
             String shortName = importPath.substring(importPath.lastIndexOf('.') + 1);
             imports.add(new ImportFact(shortName, importPath, line(importDeclaration)));
         });
         return imports;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<String> staticFieldNames(InitializerDeclaration initializer) {
+        Set<String> names = new LinkedHashSet<>();
+        TypeDeclaration<?> type = initializer.findAncestor(TypeDeclaration.class).orElse(null);
+        if (type == null) {
+            return names;
+        }
+        for (FieldDeclaration field : type.getFields()) {
+            if (field.hasModifier(Modifier.Keyword.STATIC)) {
+                field.getVariables().forEach(variable -> names.add(variable.getNameAsString()));
+            }
+        }
+        return names;
     }
 
     private static List<TypeRefFact> extractTypeRefs(CompilationUnit unit, List<ImportFact> imports) {
@@ -263,16 +283,19 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
         return node.getEnd().map(position -> position.line).orElse(0);
     }
 
-    private static StaticInitFact staticBlockFact(Statement statement) {
+    private static StaticInitFact staticBlockFact(Statement statement, Set<String> staticFieldNames) {
         int line = line(statement);
         if (statement instanceof ExpressionStmt expressionStatement) {
             Expression expression = expressionStatement.getExpression();
             if (expression.isMethodCallExpr()) {
                 MethodCallExpr call = expression.asMethodCallExpr();
                 String target = call.getScope()
-                        .filter(Expression::isNameExpr)
-                        .map(scope -> scope.asNameExpr().getNameAsString())
+                        .map(JavaParserAnalyzer::fieldNameCandidate)
+                        .filter(staticFieldNames::contains)
                         .orElse("");
+                if (target.isEmpty()) {
+                    return new StaticInitFact("", "static initializer", expression.toString(), line);
+                }
                 String initializer = call.getArguments().size() == 1
                         ? call.getArgument(0).toString()
                         : expression.toString();
@@ -280,12 +303,29 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
             }
             if (expression.isAssignExpr()) {
                 AssignExpr assignment = expression.asAssignExpr();
-                return new StaticInitFact(assignment.getTarget().toString(), "static initializer",
+                String target = Optional.of(assignment.getTarget())
+                        .map(JavaParserAnalyzer::fieldNameCandidate)
+                        .filter(staticFieldNames::contains)
+                        .orElse("");
+                if (target.isEmpty()) {
+                    return new StaticInitFact("", "static initializer", expression.toString(), line);
+                }
+                return new StaticInitFact(target, "static initializer",
                         assignment.getValue().toString(), line);
             }
             return new StaticInitFact("", "static initializer", expression.toString(), line);
         }
         return new StaticInitFact("", "static initializer", statement.toString(), line);
+    }
+
+    private static String fieldNameCandidate(Expression expression) {
+        if (expression.isNameExpr()) {
+            return expression.asNameExpr().getNameAsString();
+        }
+        if (expression.isFieldAccessExpr()) {
+            return expression.asFieldAccessExpr().getNameAsString();
+        }
+        return "";
     }
 
     private static final class DeclarationCollector extends VoidVisitorAdapter<Void> {
@@ -377,8 +417,9 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
         @Override
         public void visit(InitializerDeclaration initializer, Void arg) {
             if (initializer.isStatic()) {
+                Set<String> staticFieldNames = staticFieldNames(initializer);
                 for (Statement statement : initializer.getBody().getStatements()) {
-                    staticInitializations.add(staticBlockFact(statement));
+                    staticInitializations.add(staticBlockFact(statement, staticFieldNames));
                 }
             }
             super.visit(initializer, arg);
@@ -442,7 +483,10 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
 
         @Override
         public void visit(ObjectCreationExpr creation, Void arg) {
-            typeRefs.add(new TypeRefFact(line(creation), "new", creation.getType().getNameAsString(), null));
+            ClassOrInterfaceType createdType = creation.getType();
+            typeRefs.add(new TypeRefFact(line(creation), "new", createdType.getNameWithScope(), null));
+            createdType.getTypeArguments().ifPresent(arguments ->
+                    arguments.forEach(argument -> addType(argument, line(creation))));
             super.visit(creation, arg);
         }
 

@@ -72,13 +72,38 @@ class JavaParserAnalyzerTest {
         assertEquals("public", classFact.modifiers());
         assertEquals("", classFact.lifetime());
 
-        assertEquals(21, facts.imports().size());
-        ImportFact simpleDateFormat = importFor(facts, "SimpleDateFormat");
-        assertEquals("java.text.SimpleDateFormat", simpleDateFormat.importPath());
-        assertEquals(3, simpleDateFormat.line());
-        ImportFact exceptionController = importFor(facts, "ExceptionController");
-        assertEquals("com.in28minutes.exception.ExceptionController", exceptionController.importPath());
-        assertEquals(26, exceptionController.line());
+        assertEquals(List.of(
+                new ImportFact("SimpleDateFormat", "java.text.SimpleDateFormat", 3),
+                new ImportFact("Date", "java.util.Date", 4),
+                new ImportFact("HttpServletRequest", "javax.servlet.http.HttpServletRequest", 6),
+                new ImportFact("Valid", "javax.validation.Valid", 7),
+                new ImportFact("Log", "org.apache.commons.logging.Log", 9),
+                new ImportFact("LogFactory", "org.apache.commons.logging.LogFactory", 10),
+                new ImportFact("Autowired", "org.springframework.beans.factory.annotation.Autowired", 11),
+                new ImportFact("CustomDateEditor", "org.springframework.beans.propertyeditors.CustomDateEditor", 12),
+                new ImportFact("SecurityContextHolder", "org.springframework.security.core.context.SecurityContextHolder", 13),
+                new ImportFact("UserDetails", "org.springframework.security.core.userdetails.UserDetails", 14),
+                new ImportFact("Controller", "org.springframework.stereotype.Controller", 15),
+                new ImportFact("ModelMap", "org.springframework.ui.ModelMap", 16),
+                new ImportFact("BindingResult", "org.springframework.validation.BindingResult", 17),
+                new ImportFact("WebDataBinder", "org.springframework.web.bind.WebDataBinder", 18),
+                new ImportFact("ExceptionHandler", "org.springframework.web.bind.annotation.ExceptionHandler", 19),
+                new ImportFact("InitBinder", "org.springframework.web.bind.annotation.InitBinder", 20),
+                new ImportFact("RequestMapping", "org.springframework.web.bind.annotation.RequestMapping", 21),
+                new ImportFact("RequestMethod", "org.springframework.web.bind.annotation.RequestMethod", 22),
+                new ImportFact("RequestParam", "org.springframework.web.bind.annotation.RequestParam", 23),
+                new ImportFact("SessionAttributes", "org.springframework.web.bind.annotation.SessionAttributes", 24),
+                new ImportFact("ExceptionController", "com.in28minutes.exception.ExceptionController", 26)),
+                facts.imports());
+
+        List<TypeRefFact> importTypeRefs = facts.typeRefs().stream()
+                .filter(ref -> ref.kind().equals("import"))
+                .toList();
+        assertEquals(21, importTypeRefs.size());
+        assertEquals("SimpleDateFormat", importTypeRefs.get(0).name());
+        assertEquals(3, importTypeRefs.get(0).line());
+        assertEquals("ExceptionController", importTypeRefs.get(20).name());
+        assertEquals(26, importTypeRefs.get(20).line());
 
         assertTrue(facts.calls().isEmpty());
         assertTrue(facts.staticInitializations().isEmpty());
@@ -233,6 +258,109 @@ class JavaParserAnalyzerTest {
     }
 
     @Test
+    void preservesWildcardAndStaticImportPaths() throws Exception {
+        Path source = tempDir.resolve("Imported.java");
+        Files.writeString(source, """
+                import java.util.*;
+                import static java.lang.Math.max;
+                import static java.util.Collections.*;
+                import java.util.Map;
+
+                class Imported {
+                }
+                """);
+
+        JavaFacts facts = analyzer.analyze(source);
+
+        assertEquals(List.of(
+                new ImportFact("*", "java.util.*", 1),
+                new ImportFact("max", "java.lang.Math.max", 2),
+                new ImportFact("*", "java.util.Collections.*", 3),
+                new ImportFact("Map", "java.util.Map", 4)),
+                facts.imports());
+
+        List<TypeRefFact> importRefs = facts.typeRefs().stream()
+                .filter(ref -> ref.kind().equals("import"))
+                .toList();
+        assertEquals(List.of("*", "max", "*", "Map"),
+                importRefs.stream().map(TypeRefFact::name).toList());
+        assertEquals(List.of(1, 2, 3, 4),
+                importRefs.stream().map(TypeRefFact::line).toList());
+        assertTrue(importRefs.stream().allMatch(ref -> ref.resolvedClassId() == null));
+    }
+
+    @Test
+    void keepsStaticTargetsOnlyForDeclaredStaticFieldsAndRetainsFullExpressions() throws Exception {
+        Path source = tempDir.resolve("StaticTargets.java");
+        Files.writeString(source, """
+                class StaticTargets {
+                    static java.util.List<String> declared = new java.util.ArrayList<>();
+                    java.util.List<String> instance = new java.util.ArrayList<>();
+
+                    static {
+                        declared.add(new String("ok"));
+                        this.declared.add(new String("qualified"));
+                        instance.add(new String("instance"));
+                        SomeUtil.init(new Widget());
+                        this.instance.add(new Widget());
+                        declared = new java.util.ArrayList<>();
+                        instance = new java.util.ArrayList<>();
+                    }
+                }
+                """);
+
+        JavaFacts facts = analyzer.analyze(source);
+
+        assertEquals("declared", staticFactAt(facts, 2).targetField());
+        assertEquals("field initializer", staticFactAt(facts, 2).sourceKind());
+        assertEquals("new java.util.ArrayList<>()", staticFactAt(facts, 2).initializer());
+
+        List<StaticInitFact> blockFacts = facts.staticInitializations().stream()
+                .filter(fact -> fact.sourceKind().equals("static initializer"))
+                .toList();
+        assertEquals(7, blockFacts.size());
+
+        assertStaticFact(blockFacts, 6, "declared", "new String(\"ok\")");
+        assertStaticFact(blockFacts, 7, "declared", "new String(\"qualified\")");
+        assertStaticFact(blockFacts, 8, "", "instance.add(new String(\"instance\"))");
+        assertStaticFact(blockFacts, 9, "", "SomeUtil.init(new Widget())");
+        assertStaticFact(blockFacts, 10, "", "this.instance.add(new Widget())");
+        assertStaticFact(blockFacts, 11, "declared", "new java.util.ArrayList<>()");
+        assertStaticFact(blockFacts, 12, "", "instance = new java.util.ArrayList<>()");
+    }
+
+    @Test
+    void preservesObjectCreationGenericArgumentTypesWithoutResolution() throws Exception {
+        Path source = tempDir.resolve("GenericCreation.java");
+        Files.writeString(source, """
+                import java.util.HashMap;
+
+                class GenericCreation<T> {
+                    void run() {
+                        consume(new HashMap<String, Todo>());
+                        Object other = new java.util.ArrayList<Todo>();
+                    }
+
+                    void consume(Object value) {
+                    }
+                }
+                """);
+
+        JavaFacts facts = analyzer.analyze(source);
+
+        List<TypeRefFact> createdTypes = facts.typeRefs().stream()
+                .filter(ref -> ref.kind().equals("new"))
+                .toList();
+        assertEquals(List.of("HashMap", "java.util.ArrayList"),
+                createdTypes.stream().map(TypeRefFact::name).toList());
+        assertTrue(createdTypes.stream().allMatch(ref -> ref.resolvedClassId() == null));
+
+        assertTypeRefAt(facts, 5, "String");
+        assertTypeRefAt(facts, 5, "Todo");
+        assertTypeRefAt(facts, 6, "Todo");
+    }
+
+    @Test
     void reportsParseFailureWithoutSourceText() throws Exception {
         Path source = tempDir.resolve("Broken.java");
         Files.writeString(source, "class Broken { void x( { String secret = \"do-not-leak\"; }");
@@ -268,11 +396,27 @@ class JavaParserAnalyzerTest {
                 .orElseThrow(() -> new AssertionError("missing " + kind + " " + name));
     }
 
-    private static ImportFact importFor(JavaFacts facts, String shortName) {
-        return facts.imports().stream()
-                .filter(importFact -> importFact.shortName().equals(shortName))
+    private static StaticInitFact staticFactAt(JavaFacts facts, int line) {
+        return facts.staticInitializations().stream()
+                .filter(fact -> fact.line() == line)
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("missing import " + shortName));
+                .orElseThrow(() -> new AssertionError("missing static fact at line " + line));
+    }
+
+    private static void assertStaticFact(List<StaticInitFact> facts, int line,
+            String targetField, String initializer) {
+        StaticInitFact fact = facts.stream()
+                .filter(candidate -> candidate.line() == line)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("missing static fact at line " + line));
+        assertEquals(targetField, fact.targetField());
+        assertEquals(initializer, fact.initializer());
+    }
+
+    private static void assertTypeRefAt(JavaFacts facts, int line, String name) {
+        assertTrue(facts.typeRefs().stream()
+                        .anyMatch(ref -> ref.kind().equals("type") && ref.line() == line && ref.name().equals(name)),
+                () -> "missing type ref " + name + " at line " + line);
     }
 
     private static List<String> parameterNames(MethodFact method) {
