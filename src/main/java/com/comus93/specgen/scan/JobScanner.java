@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -43,7 +45,8 @@ public final class JobScanner {
 
         List<SourceJob> jobs = new ArrayList<>();
         for (ModuleRoot module : modules) {
-            List<SourceJob> moduleJobs = scanModule(module, config.mode(), config.outputFormat(), outputRoot);
+            List<SourceJob> moduleJobs = scanModule(module, config.mode(), config.outputFormat(), outputRoot,
+                    realOutputRoot);
             moduleJobs.sort(Comparator.comparing(job -> job.relativePath().toString()));
             jobs.addAll(moduleJobs);
         }
@@ -64,7 +67,7 @@ public final class JobScanner {
     }
 
     private static List<SourceJob> scanModule(ModuleRoot module, SourceMode mode, OutputFormat format,
-            Path outputRoot) {
+            Path outputRoot, Path realOutputRoot) {
         List<SourceJob> jobs = new ArrayList<>();
         Path root = module.realRoot();
         Path moduleFolderName = root.getFileName();
@@ -101,6 +104,7 @@ public final class JobScanner {
                     Path outputFile = outputModuleRoot
                             .resolve(relativePath)
                             .resolveSibling(excelFileName(fileName, format));
+                    validateOutputFile(outputFile, realOutputRoot);
                     jobs.add(new SourceJob(module.selection(), file, relativePath, outputFile));
                     return FileVisitResult.CONTINUE;
                 }
@@ -110,6 +114,32 @@ public final class JobScanner {
                     exception);
         }
         return jobs;
+    }
+
+    private static void validateOutputFile(Path outputFile, Path realOutputRoot) {
+        Path parent = outputFile.getParent();
+        if (parent == null) {
+            throw new IllegalArgumentException("Output file has no parent directory: " + outputFile);
+        }
+        Path realParent = realPathAllowingMissing(parent);
+        if (!isWithin(realParent, realOutputRoot)) {
+            throw new IllegalArgumentException("Output path escapes output directory: " + outputFile);
+        }
+        if (isExistingReparsePoint(outputFile)) {
+            throw new IllegalArgumentException("Output file is a link or reparse point: " + outputFile);
+        }
+    }
+
+    private static boolean isExistingReparsePoint(Path path) {
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            return isLinkOrReparse(attributes);
+        } catch (NoSuchFileException exception) {
+            return false;
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Output path is not accessible: " + path, exception);
+        }
     }
 
     private static boolean isLinkOrReparse(BasicFileAttributes attributes) {

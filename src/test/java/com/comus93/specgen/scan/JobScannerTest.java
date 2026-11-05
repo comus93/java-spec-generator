@@ -175,6 +175,131 @@ class JobScannerTest {
     }
 
     @Test
+    void deduplicatesWindowsCaseVariantFolderRegistrationsPreservingFirst() throws IOException {
+        assumeTrue(isWindows(), "Windows case-insensitive path equality check");
+        Path source = tempDir.resolve("case").resolve("module1");
+        Path sourceFile = writeSource(source.resolve("A.java"));
+        ModuleSelection first = new ModuleSelection(source, "SYS1", "first");
+        ModuleSelection caseVariant = new ModuleSelection(
+                Path.of(source.toString().toUpperCase(Locale.ROOT)), "SYS1", "second");
+
+        List<SourceJob> jobs = new JobScanner().plan(config(SourceMode.JAVA, tempDir.resolve("output"),
+                first, caseVariant));
+
+        assertEquals(1, jobs.size());
+        assertEquals(first, jobs.get(0).module());
+        assertEquals(sourceFile.toRealPath(), jobs.get(0).sourceFile());
+    }
+
+    @Test
+    void keepsJunctionAliasRegistrationsIndependent() throws Exception {
+        assumeTrue(isWindows(), "Windows junction filesystem check");
+        Path target = tempDir.resolve("src").resolve("module1");
+        Path targetFile = writeSource(target.resolve("A.java"));
+        Path alias = tempDir.resolve("module1-alias");
+        assertTrue(createJunction(alias, target), "could not create junction alias fixture");
+
+        try {
+            ModuleSelection real = new ModuleSelection(target, "SYS1", "real");
+            ModuleSelection aliasSelection = new ModuleSelection(alias, "SYS1", "alias");
+
+            List<SourceJob> jobs = new JobScanner().plan(config(SourceMode.JAVA, tempDir.resolve("output"),
+                    real, aliasSelection));
+
+            assertEquals(2, jobs.size());
+            assertEquals(real, jobs.get(0).module());
+            assertEquals(aliasSelection, jobs.get(1).module());
+            assertEquals(targetFile.toRealPath(), jobs.get(0).sourceFile());
+            assertEquals(targetFile.toRealPath(), jobs.get(1).sourceFile());
+        } finally {
+            removeJunction(alias);
+        }
+    }
+
+    @Test
+    void rejectsOutputModuleJunctionIntoSourceFolder() throws Exception {
+        assumeTrue(isWindows(), "Windows junction filesystem check");
+        Path source = tempDir.resolve("src").resolve("module1");
+        writeSource(source.resolve("controller").resolve("A.java"));
+        Path outputRoot = tempDir.resolve("output");
+        Files.createDirectories(outputRoot);
+        Path junction = outputRoot.resolve("module1");
+        assertTrue(createJunction(junction, source), "could not create output junction fixture");
+
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JobScanner().plan(config(SourceMode.JAVA, outputRoot,
+                            new ModuleSelection(source, "SYS1", "module1"))));
+        } finally {
+            removeJunction(junction);
+        }
+    }
+
+    @Test
+    void rejectsOutputModuleJunctionOutsideOutputRoot() throws Exception {
+        assumeTrue(isWindows(), "Windows junction filesystem check");
+        Path source = tempDir.resolve("src").resolve("module1");
+        writeSource(source.resolve("controller").resolve("A.java"));
+        Path external = tempDir.resolve("external");
+        Files.createDirectories(external);
+        Path outputRoot = tempDir.resolve("output");
+        Files.createDirectories(outputRoot);
+        Path junction = outputRoot.resolve("module1");
+        assertTrue(createJunction(junction, external), "could not create output junction fixture");
+
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JobScanner().plan(config(SourceMode.JAVA, outputRoot,
+                            new ModuleSelection(source, "SYS1", "module1"))));
+        } finally {
+            removeJunction(junction);
+        }
+    }
+
+    @Test
+    void rejectsDeeperOutputDirectoryJunctionIntoSourceFolder() throws Exception {
+        assumeTrue(isWindows(), "Windows junction filesystem check");
+        Path source = tempDir.resolve("src").resolve("module1");
+        writeSource(source.resolve("controller").resolve("A.java"));
+        Path outputRoot = tempDir.resolve("output");
+        Path moduleOutputDirectory = outputRoot.resolve("module1");
+        Files.createDirectories(moduleOutputDirectory);
+        Path junction = moduleOutputDirectory.resolve("controller");
+        assertTrue(createJunction(junction, source.resolve("controller")),
+                "could not create deeper output junction fixture");
+
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JobScanner().plan(config(SourceMode.JAVA, outputRoot,
+                            new ModuleSelection(source, "SYS1", "module1"))));
+        } finally {
+            removeJunction(junction);
+        }
+    }
+
+    @Test
+    void rejectsExistingDestinationReparsePoint() throws Exception {
+        assumeTrue(isWindows(), "Windows junction filesystem check");
+        Path source = tempDir.resolve("src").resolve("module1");
+        writeSource(source.resolve("controller").resolve("A.java"));
+        Path external = tempDir.resolve("external");
+        Files.createDirectories(external);
+        Path outputRoot = tempDir.resolve("output");
+        Path destinationParent = outputRoot.resolve("module1").resolve("controller");
+        Files.createDirectories(destinationParent);
+        Path destination = destinationParent.resolve("A.xls");
+        assertTrue(createJunction(destination, external), "could not create destination junction fixture");
+
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JobScanner().plan(config(SourceMode.JAVA, outputRoot,
+                            new ModuleSelection(source, "SYS1", "module1"))));
+        } finally {
+            removeJunction(destination);
+        }
+    }
+
+    @Test
     void usesPhysicalFolderNameWhenRegisteredPathCaseDiffers() throws IOException {
         assumeTrue(isWindows(), "Windows case-insensitive filesystem check");
         Path source = tempDir.resolve("src").resolve("PhysicalModule");
