@@ -1,79 +1,81 @@
-# Java Spec Generator · Task 06 Development Benchmark
+# Java Spec Generator · Task 06 개발 성능 비교 (6회)
 
-Last updated: 2026-11-06 (KST). Source contract: `control/TASK-06-BRIEF.md`.
-Same baseline: `108de803e15aaa5467f4a163f6197ad6c12fb445`. Distinct isolated Git worktrees; sequential candidates. No independent correctness verification or merge. The initial `control/PROTOCOL.md` is retained as a historical setup snapshot; its original pre-run status flags are superseded by the run records below.
+- 최신 통합: 2026-11-06 (KST)
+- 과제: PMD JSP Parser (`control/TASK-06-BRIEF.md`)
+- 공통 출발 커밋: `108de803e15aaa5467f4a163f6197ad6c12fb445`
+- 개발 후보별 독립 워크트리·브랜치. 소요 시간은 MCSVR 호스트 기록; **모든 숫자는 `control/METRICS.csv`와 실행별 보고서로 추적**한다.
+- 완료 시각은 Git 커밋 시각이나 실제 종료 **관측** 시각으로, 내부 작업의 동일한 지점이 아닐 수 있다. **순수 모델 성능 순위나 품질 순위를 확정하는 자료가 아니다.**
 
-## Five-run consolidated comparison
+## 1. 6개 완료·커밋 실행 비교
 
-All five development attempts started from commit `108de803e15aaa5467f4a163f6197ad6c12fb445`, in independent worktrees. **The retest timer begins at development start after preparation, while the other four timers begin at dispatch**, so elapsed times are descriptive rather than a strictly controlled speed ranking.
+| 모델·실행 환경 | 시간 측정 시작점 | 시작 → 커밋 | 시작 → 정상 완료 관측 | 자체 대상 테스트 | 전체 테스트 | 변경량 | Git 커밋 / 최종 상태 |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| **GPT-6 Instant / AgentDock 직접** | 환경 준비 후 첫 개발 작업 | **3분 33.716초** | **4분 12.114초** | 2 PASS | 47 PASS (직접 확인) | 3파일, +174줄 | `2a158d5` / 완료 |
+| GPT-6 / AgentDock 직접 (최초) | 위임/측정 시작 | 7분 51.041초 | 8분 30.640초 | 5 PASS | 50 PASS (직접 확인) | 5파일, +370줄 | `a073bfd` / 완료 |
+| GPT-6 / AgentDock 직접 (재측정) | 환경 준비 후 첫 개발 작업 | 8분 약 47초 | 9분 11.116초 | 4 PASS | 49 PASS (직접 확인) | 4파일, +402줄 | `dd28303` / 완료 |
+| Codex Terra Medium / Paseo | 위임 시작 | 18분 00초 | **없음** | 4 PASS | 미확인 | 5파일, +185줄 | `d259006` / 커밋 후 사용량 제한 오류 |
+| DeepSeek V4.1 Flash High / Paseo | 위임 시작 | 22분 30.321초 | 25분 04.344초 | 5 PASS | 50 PASS (개발자 보고) | 4파일, +611줄 | `d672dd3` / 완료 |
+| DeepSeek V4.1 Flash Default / Paseo | 위임 시작 | 28분 14.378초 | 31분 48.652초 | 5 PASS | 50 PASS (개발자 보고) | 3파일, +896줄 | `2ba40f1` / 완료 |
 
-| Candidate | Timing origin | Origin → commit | Origin → normal completion | Target tests | Full suite | Changed files / added lines | Commit / status |
-| --- | --- | ---: | ---: | --- | --- | ---: | --- |
-| **GPT + AgentDock (retest)** | Development start after preparation | **8m 47s** | **9m 11.116s** | **4 PASS** | **49 PASS, directly observed** | **4 / +402** | `dd28303` · completed |
-| GPT + AgentDock (original) | Dispatch | 7m 51.041s | 8m 30.640s | 5 PASS | 50 PASS, directly observed | 5 / +370 | `a073bfd` · completed |
-| Terra Medium + Paseo | Dispatch | 18m 00s | **Unavailable** | 4 PASS | Unconfirmed | 5 / +185 | `d259006` · committed; usage-limit error afterward |
-| DeepSeek High + Paseo | Dispatch | 22m 30.321s | 25m 04.344s | 5 PASS | 50 PASS, developer-reported | 4 / +611 | `d672dd3` · completed |
-| DeepSeek Default + Paseo | Dispatch | 28m 14.378s | 31m 48.652s | 5 PASS | 50 PASS, developer-reported | 3 / +896 | `2ba40f1` · completed |
+**중요:** 기존 문서의 '4후보'·'5회' 표는 역사적 스냅샷이었다. 현재 확정된 **6개 실행**을 위의 단일 표로 통합했다. 취소되거나 중단된 옛 시도는 `METRICS.csv`에 별도 상태로 보존하며 성공 실행 건수에 포함하지 않는다. 이번 기록 작성 과정에서 새로 생성되었을 수 있는 다른 모델 시도는 완료·커밋이 확인되기 전까지 제외한다.
 
-**Comparison limits:** Completion time includes the measured observation endpoint for each run, not necessarily identical phases. Test counts are from separately authored test suites and do not prove equivalent coverage or functional quality. No independent Verifier was run. Detailed retest evidence is in `control/AGENTDOCK-RETEST-RESULTS.md`; chronological entries are in `control/METRICS.csv`.
+## 2. 시간 측정의 정확한 해석
 
-## Four-candidate comparison
+- **Instant:** 개발 첫 액션 `06:57:26.2836`, Git 커밋 `07:01:00`, 정상 완료 관측 `07:01:38.3976`. 환경 준비 시간은 제외. 커밋은 Git에서 초 단위로 기록.
+- **GPT 최초:** Dispatch `05:51:44.9593`, 커밋 `05:59:36`, 정상 완료 관측 `06:00:15.5989`.
+- **GPT 재측정:** 개발 시작 `06:28:48.535`, 커밋 `06:37:36`, 완료 관측 `06:37:59.651`. **작업 준비는 시간에서 제외**. Git 커밋 초 단위 해상도 때문에 정밀 소수점 비교 금지.
+- **Terra:** Dispatch 2026-11-05 `22:00:52`, 커밋 `22:18:52`, 이후 사용량 제한 에러 `22:19:28.424`. **정상 완료 시간이라고 주장하지 않는다.**
+- **DeepSeek High:** Dispatch `04:25:40.6793`, 커밋 `04:48:11`, 완료 관측 `04:50:45.0234`.
+- **DeepSeek Default:** Dispatch `05:03:22.6222`, 커밋 `05:31:37`, 완료 관측 `05:35:11.2737`.
 
-| Metric | GPT direct AgentDock | Paseo Codex Terra Medium | Paseo DeepSeek High | Paseo DeepSeek Default |
-| --- | --- | --- | --- | --- |
-| Date (KST) | 11/06 | 11/05 | 11/06 | 11/06 |
-| Worktree | `dev-agentdock` | `dev-terra` | `dev-deepseek` | `dev-deepseek-default` |
-| Dispatch | 05:51:44.959 | 22:00:52 | 04:25:40.679 | 05:03:22.622 |
-| Commit | 05:59:36 | 22:18:52 | 04:48:11 | 05:31:37 |
-| **Dispatch → commit** | **7m 51.041s** | **18m 00s** | **22m 30.321s** | **28m 14.378s** |
-| Finish observation (KST) | 06:00:15.599 | 22:19:28.424 error only | 04:50:45.023 | 05:35:11.274 |
-| **Dispatch → normal completion observation** | **8m 30.640s** | **Unavailable** | **25m 04.344s** | **31m 48.652s** |
-| Commit | `a073bfd` | `d259006` | `d672dd3` | `2ba40f1` |
-| Added lines / files | +370 / 5 | +185 / 5 | +611 / 4 | +896 / 3 |
-| Target tests | 5 passed (local report) | 4 passed (local report) | 5 passed (developer report and Surefire) | 5 passed (developer report) |
-| Full suite tests | **50 passed (directly executed)** | Unconfirmed | 50 passed (developer report) | 50 passed (developer report) |
-| Outcome | Commit + normal completion | Commit, then Codex usage-limit error | Normal completion | Normal completion |
+**동일한 기준 커밋에서 개발했다고 같은 실험 조건은 아니다.** 최초/위임 실행과 재측정/Instant 실행은 타이머 기점이 다르고, 모델이 받은 사전 맥락 및 계획서 접근 여부, Paseo 사용 여부, 자체 테스트 집합이 다르다. 측정 반복도 충분하지 않다. 따라서 위 표는 **관찰된 실제 실행 완료 속도**이지 모델 자체의 인과적 성능 순위가 아니다.
 
-### Interpretation
+## 3. 참고 문서 및 개발 과정 차이
 
-- On **time to commit**, direct GPT + AgentDock recorded 7m51s vs Terra 18m, DeepSeek High 22m30s, and DeepSeek Default 28m14s. This is a speed observation, not a verified quality ranking.
-- On **dispatch → normal completion**, direct GPT + AgentDock recorded 8m31s, DeepSeek High 25m04s, DeepSeek Default 31m49s. Terra has no normal-completion timing, because its session hit the token usage limit after committing.
-- Each candidate wrote its own test suite and code, so test counts and line counts do not imply matching test coverage. The targeted build includes parser implementation, local tests and Git commit. The exact clock-to-completion endpoint includes controller final-observation overhead.
-- Developer agents used Paseo+OpenCode/Codex, while the GPT candidate called AgentDock remote tools directly. Harness and permissions differ. GPT had previous comparison context but did not inspect earlier candidate source; **do not claim a controlled model-only benchmark**.
-- This is one run per configuration. No claim about statistical significance or independent functional equivalence.
+- **Paseo 3개 후보:** `TASK-06-BRIEF.md`를 기준으로, 필요한 경우 계획서의 Task 06을 참고할 수 있도록 지시했고 실제 해당 부분을 읽었다는 기록이 있다. RED→PASS, 제한된 범위의 Git 커밋을 요구했다.
+- **GPT 직접 최초:** 짧은 내부 작업 순서로 구현, 계획서 Task 06 부분은 열람하지 않은 것으로 기존 실행 기록에 남아 있다.
+- **GPT 직접 재측정:** Task 06 계획서를 **읽음**. 줄 범위 지정상 인접 Task 07 텍스트 일부가 보였으나 사용·수정하지 않았음을 상세 보고서에 기록했다.
+- **Instant 직접:** Task 06 계획서는 **읽지 않음**. 구현·테스트를 빠르게 마쳤지만 자체 대상 테스트가 2개였고 별도 품질 검증 결과 결손이 발견됐다.
+- 이전에 작성한 개발 과정 분석: `docs/research/TASK06-GPT-DEVELOPMENT-ANALYSIS.md`.
 
-## Follow-up and provenance
+## 4. 독립 코드 품질 검증 결과 (두 후보만)
 
-- Raw chronological events: `control/METRICS.csv` (older abandoned attempts retained separately).
-- GPT direct run: `control/AGENTDOCK-DEV-RESULTS.md`; host stamps `control/AGENTDOCK-20261106-{DISPATCH,FINISHED}.txt`.
-- DeepSeek High: `control/PASEO-DEV-RESULTS.md`.
-- DeepSeek Default: `control/DEEPSEEK-DEFAULT-RESULTS.md`; adapter-default evidence recorded in related settings files.
-- Canonical task and protocol: `control/TASK-06-BRIEF.md`, `control/PROTOCOL.md`.
-- All four source candidates remain on isolated Git branches. No main/release changes.
-- Independent quality verification should compare acceptance cases on a single predefined test set before interpreting relative implementation correctness. The reserved verifier worktrees have not been started.
+2026-11-06 수행한 **GPT-6 직접 재측정 vs GPT-6 Instant** 코드 리뷰 + 동일 입력 직접 실행의 결과는 **`control/TASK06-GPT-QUALITY-COMPARISON.md`**에 따로 보존한다.
 
-## 2026-11-06 follow-up: GPT direct AgentDock **independent retest**
+| 비교 관점 | GPT-6 직접 재측정 | GPT-6 Instant |
+| --- | --- | --- |
+| 당장 활용 가능한 수준 | 보완·확장 가능한 파서 프로토타입 | PMD 파싱/기초 AST 추출 PoC |
+| 부모 폼의 `object=todo` 보존 | 예 | 아니오 (`null`) |
+| JSP include 파일 경로 | 예 | 누락 |
+| LINK_CLICK 설명/Return 의미 | 설명에 URL, Return `null`; `href=` 원문 형태는 미보존 | **설명에 텍스트, Return에 URL: 의미 오매핑** |
+| 중첩 `<strong>` 링크 텍스트 | 유지 | 누락 |
+| `readonly=true` editable | 잘못 `true` | `null` |
+| `todo.jsp` 화면 필드 | 3개; 승인 Golden에는 4개 | 3개; 승인 Golden에는 4개 |
+| `list-todos.jsp` 화면 필드 | 0개; 승인 Golden에는 7개 | 0개; 승인 Golden에는 7개 |
+| 실제 제품 투입 | 추가 기능·통합 검증 전에는 불가 | 핵심 매핑/누락 개선 전에는 불가 |
 
-The original four-candidate results above remain unchanged. This is a fifth, independently tracked development run using the same baseline and brief.
+위 화면 필드 수는 **파서의 사실 추출** 결과와 **Golden 최종 엑셀**의 행 수를 대비한 것으로, Task 09의 매퍼가 미구현인 상태에서 최종 시트 생성까지 시험한 것은 아니다. Flow 사실 31개와 Golden 최소 흐름 11개는 필터링/투영이 후속 Task에 속하므로 단독 결함으로 판정하지 않는다. 두 구현 모두 잘못된 JSP의 `PARSE_ERROR`는 확인했다.
 
-| Metric | **GPT direct AgentDock retest** | Previous GPT direct | Terra Medium | DeepSeek High | DeepSeek Default |
-| --- | --- | --- | --- | --- | --- |
-| Timer origin | **Post-preparation development start** | Dispatch | Dispatch | Dispatch | Dispatch |
-| Origin (KST) | 06:28:48.535 | 05:51:44.959 | 22:00:52 (11/05) | 04:25:40.679 | 05:03:22.622 |
-| Commit (KST) | **06:37:36** | 05:59:36 | 22:18:52 (11/05) | 04:48:11 | 05:31:37 |
-| Origin → commit | **8m 47s** | 7m 51.041s | 18m 00s | 22m 30.321s | 28m 14.378s |
-| Normal completion endpoint (KST) | **06:37:59.651** | 06:00:15.599 | Unavailable (usage limit after commit) | 04:50:45.023 | 05:35:11.274 |
-| Origin → normal completion | **9m 11.116s** | 8m 30.640s | Unavailable | 25m 04.344s | 31m 48.652s |
-| Commit | `dd28303` | `a073bfd` | `d259006` | `d672dd3` | `2ba40f1` |
-| Files / added lines | **4 / 402** | 5 / 370 | 5 / 185 | 4 / 611 | 3 / 896 |
-| Targeted PASS | **4 tests** | 5 tests | 4 tests | 5 tests | 5 tests |
-| Full suite PASS | **49 tests, observed** | 50 tests, observed | Unconfirmed | 50 reported | 50 reported |
-| Outcome | **Normal completion, clean commit** | Normal completion | Usage limit after commit | Normal completion | Normal completion |
+**현재 재사용 권고:** 실제 제품 구현의 확장 출발점은 GPT 재측정 후보가 적절하다. Instant의 장점은 신속한 초기 구현이지만 필드 관계·이벤트 스키마·include 등 의미적 정확성이 더 부족하다. 모델 성능에 관한 일반 결론이나 다른 네 후보의 코드 품질 판정으로 확대하지 않는다.
 
-**Benchmark qualification:** Original candidates were timed from dispatch, often through coordinator or Paseo completion observation; the retest was timed from the start of actual code work **after environment preparation** to the post-commit host timestamp. Accordingly, even the 40.476-second difference between the two GPT direct completion figures is **not a like-for-like speed delta**. Likewise, test coverage cannot be ranked from different target test counts. All runs used the same starting commit but different implementations and execution conditions. These are descriptive results, not a controlled model-only performance comparison.
+## 5. 증거 파일과 후속 과제
 
-**Retest trace:** `control/AGENTDOCK-RETEST-RESULTS.md` and new `METRICS.csv` row `20261106-gpt-agentdock-retest`. The retest read the optional Task 06 plan; the requested line-range read inadvertently surfaced adjoining Task 07 plan text (unused), documented as a scope deviation in the detailed report. No prior source candidate was read/reused before development completion. No independent verifier or merge performed.
+- **기본 원시 기록:** `control/METRICS.csv` (중단된 과거 실행 포함, 원본 유지).
+- **GPT 최초:** `control/AGENTDOCK-DEV-RESULTS.md`.
+- **GPT 재측정:** `control/AGENTDOCK-RETEST-RESULTS.md`.
+- **GPT Instant:** `control/AGENTDOCK-INSTANT-RESULTS.md`.
+- **DeepSeek High:** `control/PASEO-DEV-RESULTS.md`.
+- **DeepSeek Default:** `control/DEEPSEEK-DEFAULT-RESULTS.md`.
+- **새 품질 보고서:** `control/TASK06-GPT-QUALITY-COMPARISON.md`.
+- **프로토콜/요구사항:** `control/PROTOCOL.md`, `control/TASK-06-BRIEF.md`.
+- **역사적 타임스탬프:** 로컬 벤치마크 루트의 `control/*-DISPATCH.txt`, `*-FINISHED.txt` (일부는 Git에 별도로 추적되지 않은 로컬 증거).
+- **검증 도구:** `control/quality-probe/Task06QualityProbe.java` 및 `control/quality-probe/README.md` (리포지토리에 포함 시 재현 가능).
 
-## 2026-11-06 GPT-6 Instant direct AgentDock run
+### 후속 판단 기준
 
-Independent worktree dev-agentdock-instant at baseline 108de803; commit 2a158d5. Timer after preparation: start 06:57:26.284 KST, commit 07:01:00 KST (213.716s), normal completion observation 07:01:38.398 KST (252.114s). RED observed; targeted 2 PASS; full 47 PASS; 3 files +174. Optional plan not read. Previous GPT original 471.041s to commit / 510.640s completion; GPT retest ~527s / 551.116s; Terra 1080s to commit (no normal finish); DeepSeek High 1350.321s / 1504.344s; DeepSeek Default 1694.378s / 1908.652s. Different timer origins, self-authored test suites, and harnesses prohibit controlled speed or quality ranking. No independent verification. See AGENTDOCK-INSTANT-RESULTS.md.
+1. **검증 전 개발 시간**과 **공통 수용 기준 통과까지의 전체 시간**을 따로 측정한다.
+2. 개발자 자체 테스트가 아닌 사전 고정된 Golden/공통 테스트로 수용 여부를 판정한다.
+3. 모델, 개발 도구/하네스, 계획서 실제 열람, 사전 맥락, 준비 시간, 테스트 커버리지 차이를 실험 변수로 남긴다.
+4. 모델별 1회 결과로 일반적 코딩 능력이나 제품 품질 우열을 확정하지 않는다.
+
+기존 자세한 결과와 역사는 Git 커밋 이력 및 개별 결과 보고서에 보존돼 있다. 개발 소스 브랜치의 병합·변경이나 제품 배포는 수행하지 않았다.

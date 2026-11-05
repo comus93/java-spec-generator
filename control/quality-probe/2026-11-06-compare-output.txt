@@ -1,0 +1,74 @@
+# Task 06 independent quality probe; source branches not modified
+# Source-file execution; both runs use the exact same Probe.java and synthetic input.
+===== dev-agentdock-retest (HEAD dd283034a18948b974ff7a6a175eaa84fc1623c4) =====
+CASE=todo.jsp
+COUNTS fields=3 flows=16 events=0 constants=0
+FIELD id | object=todo | ref=null | editable=false | type=hidden | attrs={path=id}
+FIELD desc | object=todo | ref=null | editable=true | type=text | attrs={path=desc, type=text, class=form-control, required=required}
+FIELD targetDate | object=todo | ref=null | editable=true | type=text | attrs={path=targetDate, type=text, class=form-control, required=required}
+FLOW DIRECTIVE | common/header.jspf | {file=common/header.jspf}
+FLOW DIRECTIVE | common/navigation.jspf | {file=common/navigation.jspf}
+FLOW ELEMENT | div | {class=container}
+CASE=list-todos.jsp
+COUNTS fields=0 flows=31 events=3 constants=0
+EVENT Update | description=/update-todo?id=${todo.id} | return=null
+EVENT Delete | description=/delete-todo?id=${todo.id} | return=null
+EVENT Add | description=/add-todo | return=null
+FLOW DIRECTIVE | common/header.jspf | {file=common/header.jspf}
+FLOW DIRECTIVE | common/navigation.jspf | {file=common/navigation.jspf}
+FLOW ELEMENT | div | {class=container}
+FLOW ELEMENT | c:forEach | {items=${todos}, var=todo}
+CASE=review-custom.jsp
+COUNTS fields=1 flows=6 events=1 constants=0
+FIELD amount | object=invoice | ref=null | editable=true | type=text | attrs={path=amount, readonly=true}
+EVENT View details | description=/view | return=null
+FLOW DIRECTIVE | partials/header.jspf | {file=partials/header.jspf}
+FLOW ELEMENT | form:form | {commandName=invoice}
+FLOW ELEMENT | form:input | {path=amount, readonly=true}
+CASE=review-malformed.jsp
+ERROR PARSE_ERROR | location=Parse exception in file 'C:\Users\comus\.agentdock\tmp\task06-independent-review-20261106\review-malformed.jsp' at line 1, column 25: Encountered <EOF>.
+Was expecting one of:
+    <ATTR_NAME> ...
+    ">" ...
+    "/>" ...
+JAVA_EXIT=0
+===== dev-agentdock-instant (HEAD 2a158d582149b0d6346d157d2199bb9812dbc33b) =====
+CASE=todo.jsp
+COUNTS fields=3 flows=16 events=0 constants=0
+FIELD id | object=null | ref=null | editable=null | type=hidden | attrs={path=id}
+FIELD desc | object=null | ref=null | editable=null | type=text | attrs={required=required, class=form-control, type=text, path=desc}
+FIELD targetDate | object=null | ref=null | editable=null | type=text | attrs={required=required, class=form-control, type=text, path=targetDate}
+FLOW DIRECTIVE | include | {}
+FLOW DIRECTIVE | include | {}
+FLOW TAG | div | {class=container}
+FLOW DIRECTIVE | include | {}
+CASE=list-todos.jsp
+COUNTS fields=0 flows=31 events=3 constants=0
+EVENT Update | description=Update | return=/update-todo?id=${todo.id}
+EVENT Delete | description=Delete | return=/delete-todo?id=${todo.id}
+EVENT Add | description=Add | return=/add-todo
+FLOW DIRECTIVE | include | {}
+FLOW DIRECTIVE | include | {}
+FLOW TAG | div | {class=container}
+FLOW TAG | c:forEach | {var=todo, items=${todos}}
+FLOW EL | EL | {expression=${todos}}
+FLOW EL | EL | {expression=${todo.desc}}
+FLOW EL | EL | {expression=${todo.targetDate}}
+FLOW EL | EL | {expression=${todo.done}}
+FLOW EL | EL | {expression=${todo.id}}
+FLOW EL | EL | {expression=${todo.id}}
+FLOW DIRECTIVE | include | {}
+CASE=review-custom.jsp
+COUNTS fields=1 flows=6 events=1 constants=0
+FIELD amount | object=null | ref=null | editable=null | type=text | attrs={path=amount, readonly=true}
+EVENT  | description= | return=/view
+FLOW DIRECTIVE | include | {}
+FLOW TAG | form:form | {commandName=invoice}
+FLOW TAG | form:input | {path=amount, readonly=true}
+CASE=review-malformed.jsp
+ERROR PARSE_ERROR | location=Parse exception in file 'C:\Users\comus\.agentdock\tmp\task06-independent-review-20261106\review-malformed.jsp' at line 1, column 25: Encountered <EOF>.
+Was expecting one of:
+    <ATTR_NAME> ...
+    ">" ...
+    "/>" ...
+JAVA_EXIT=0
