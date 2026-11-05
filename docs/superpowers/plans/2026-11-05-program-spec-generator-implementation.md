@@ -7,12 +7,12 @@
 **Architecture:** Java 17+ 단일 Maven 애플리케이션에서 GUI와 CLI가 동일한 JobRunner를 사용한다. JavaParser·PMD JSP Parser가 추출한 소스 사실을 공통 WorkbookModel로 매핑하고, Apache POI가 `.xls`·`.xlsx`를 생성한다. 모듈 목록 순서에 따라 폴더별로 독립 실행하고 출력 파일은 순차 덮어쓴다.
 **Tech Stack:** Java 21 개발 JDK / `--release 17`, Maven, JavaParser 3.28.2, PMD JSP 7.29.0, Apache POI HSSF/XSSF, Jackson JSON, JUnit 5, Swing, Maven Shade, `jpackage`.
 **Spec:** `docs/superpowers/specs/2026-11-05-program-spec-generator-design.md` (**APPROVED 2026-11-05**, commit `b39c0ce`).
-**Research:** `docs/research/2026-11-05-direct-javaparser-pmd-jsp-spike.md`. 과거 LeflectJava 문서는 이 계획의 기술 기준이 아니다.
+**환경 준비 상태:** 로컬 JDK·Maven 설치 경로와 실행 명령은 **사용자가 환경을 구성한 후 확인하여 계획서에 추가**한다. 현재 환경 경로를 가정하거나 고정하지 않는다.
 
 ## Global Constraints
 
-1. **구현과 실행:** Java, JDK 21 개발·빌드, 최소 JRE 17, Maven `--release 17`. GUI는 Swing, CLI는 같은 Core. Maven/JDK/Node/Python은 제품 사용 시 불필요.
-2. **분석:** JavaParser와 PMD JSP Parser를 라이브러리로 직접 호출. LeflectJava·Node.js·별도 분석 프로세스·LLM·클라우드·네트워크 API 금지. Java 소스를 컴파일/실행하지 않는다.
+1. **구현과 실행:** Java, JDK 21 개발·빌드, 최소 JRE 17, Maven `--release 17`. GUI는 Swing, CLI는 같은 Core. 사용자 배포 환경에는 Maven이나 개발 JDK를 요구하지 않는다.
+2. **분석:** JavaParser와 PMD JSP Parser를 Java 라이브러리로 직접 호출한다. 별도 분석 실행 프로세스, LLM·클라우드·네트워크 API는 사용하지 않는다. 분석 대상 Java 소스를 컴파일/실행하지 않는다.
 3. **독립 모드:** 한 Job은 `JAVA` 또는 `JSP`. Controller↔JSP 연결·URL/업무 흐름 추측 금지. JSP의 `<a href>`는 반드시 `LINK_CLICK`; `<script>`, `onclick` 상세 JavaScript 분석은 1차 범위 제외.
 4. **입력:** 시스템/작성자/프로그램명/개요/출력폴더/선택적 작성일 오버라이드 전역 입력. 각 모듈의 서브시스템·모듈명은 편집 가능하고 선택 폴더 경로는 읽기 전용. 동일 폴더 경로만 목록 중복 제거.
 5. **폴더:** 모듈 등록 순서와 각 모듈 내 상대 경로 순서로 처리. 상위/하위 폴더 함께 등록 가능, **소스 중복 제거 없음**. 물리 출력 경로는 원본 모듈 폴더명에서부터 복제. 기존 폴더 재사용, 같은 경로 Excel은 **묻지 않고 덮어쓰기**; 그 외 파일은 삭제하지 않는다.
@@ -37,7 +37,7 @@
 
 ## Implementation Structure / Interfaces
 
-**리포지토리는 현재 문서와 비제품 스파이크만 있는 초기 상태다.** 아래 경로를 명시적으로 생성하고, 숨김 `.local/`·`.superpowers/` 스파이크를 무심코 제품에 포함하지 않는다.
+**리포지토리는 현재 제품 구현 전 초기 상태다.** 아래 경로를 명시적으로 생성하고, 임시 실험 파일과 개발 로컬 파일을 제품·커밋·배포물에 포함하지 않는다.
 
 ```text
 pom.xml
@@ -81,7 +81,7 @@ scripts/verify-release.ps1
 **지원 명령 계약(본 계획에서 확정):**
 
 ```powershell
-# 소스 루트에서 JDK 21로 수행, Maven PATH가 없을 때는 설치된 mvn.cmd의 절대 경로 사용
+# 아래 명령은 환경 구성 완료 후 실행한다. 실제 JDK/Maven 경로는 사용자 설정 후 본 계획에 별도 기록한다.
 mvn -q -DskipTests package
 mvn -q test
 java -jar target/spec-generator.jar gui
@@ -98,14 +98,14 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - Create: `docs/test/golden-manifest.sha256`, `docs/test/fixtures-provenance.md`, `src/test/resources/fixtures/java/`, `src/test/resources/fixtures/jsp/`, `src/test/resources/fixtures/spring-mvc/`
 
 **Interfaces**
-- Consumes: 승인된 Spec 6, 7, 8, 13장과 현행 parser spike; 사용자가 승인한 **실제 Excel 산출물**.
+- Consumes: 승인된 Spec 6, 7, 8, 13장; 사용자가 승인한 **실제 Excel 산출물**.
 - Produces: Maven Java 17 컴파일·JUnit 테스트 실행, 고정 기준 파일과 검증 가능한 해시.
 
 - [ ] **Step 1: 실패하는 `BootstrapTest.goldenFilesExistWithRecordedSha256()` 작성.** 네 파일의 실제 존재 및 manifest 해시 일치를 검사. 누락되면 명시적 FAIL.
 - [ ] **Step 2: `mvn -q -Dtest=BootstrapTest test` 실행하여 테스트 RED 확인.** 프로젝트가 없는 상태면 빌드 실패도 준비 단계의 RED로 기록.
-- [ ] **Step 3: Maven 설정과 fixture 반입.** `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, `exec-maven-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON, SLF4J 로거를 **명시 버전 고정**. 분석기 2종은 실제 스파이크 POM과 비교한다. 참고 fixture는 `SpringMvcStepByStep`의 고정 커밋 `ea85bf29e6ce4bdbc62eab06b97ceb66e6f5028f`에서 원문 확보 후 해시·라이선스 검토; 이 외 자작 미니 fixture는 별도 구분. Golden은 승인된 업로드 **실물**과 해시를 일치시켜서만 반입.
+- [ ] **Step 3: Maven 설정과 fixture 반입.** `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, `exec-maven-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON, SLF4J 로거를 **명시 버전 고정**. 분석기 2종의 API와 Java 17 호환성은 제품 빌드·테스트에서 직접 확인한다. 참고 fixture는 `SpringMvcStepByStep`의 고정 커밋 `ea85bf29e6ce4bdbc62eab06b97ceb66e6f5028f`에서 원문 확보 후 해시·라이선스 검토; 이 외 자작 미니 fixture는 별도 구분. Golden은 승인된 업로드 **실물**과 해시를 일치시켜서만 반입.
 - [ ] **Step 4: `mvn -q -Dtest=BootstrapTest test` → PASS, `mvn -q -DskipTests package` → PASS 확인.** 기준 Excel을 확보할 수 없으면 RED 상태를 숨기지 말고 Golden 게이트를 BLOCKED로 기록하고 해당 기준본 테스트가 필요한 Task의 통과를 주장하지 않는다.
-- [ ] **Step 5: 변경 영향 테스트·스테이징 확인 후 commit.** `git add pom.xml .gitignore src/test docs/test`; `git diff --cached --check`; `git commit -m "build: bootstrap Java 17 generator and golden fixtures"`. 레포 외부 `.local/`을 add하지 않는다.
+- [ ] **Step 5: 변경 영향 테스트·스테이징 확인 후 commit.** `git add pom.xml .gitignore src/test docs/test`; `git diff --cached --check`; `git commit -m "build: bootstrap Java 17 generator and golden fixtures"`. 임시 개발 파일을 add하지 않는다.
 
 ## Task 02: 공통 설정 모델·JSON 계약·GUI 기본 행 모델
 
@@ -189,7 +189,7 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 
 - [ ] **Step 1: `PmdJspAnalyzerTest` 작성.** `todo.jsp`의 `form:input path="desc"`, `form:hidden path="id"`, `required`; `list-todos.jsp`의 `c:forEach items`/EL 및 **Update/Delete/Add 3개 `LINK_CLICK`** (정확한 표시 텍스트·href 원문) 검증. JavaScript 없는 JSP도 링크 이벤트 생성. 빈/알 수 없는 editable·참조 항목은 `null`; 정적 flow는 소스 순서.
 - [ ] **Step 2: `mvn -q -Dtest=PmdJspAnalyzerTest test` RED 확인.**
-- [ ] **Step 3: 스파이크에서 검증된 PMD API로 구현.** `JspLanguageModule` + `LanguageProcessorRegistry` + `TextDocument` + `ParserTask` + Node Visitor 사용; registry/document `try-with-resources`. 태그 속성·EL 문자열은 원문 보존. `LINK_CLICK`은 `<a href>`에서만 결정하며 **JS 함수/onclick 해석·링크의 Controller 연결은 금지**. PMD가 파싱 못 하는 레거시 JSP는 파일별 실패로 결과 기록할 수 있도록 예외화한다.
+- [ ] **Step 3: PMD JSP Parser API로 구현.** `JspLanguageModule` + `LanguageProcessorRegistry` + `TextDocument` + `ParserTask` + Node Visitor 사용; registry/document `try-with-resources`. 태그 속성·EL 문자열은 원문 보존. `LINK_CLICK`은 `<a href>`에서만 결정하며 **JS 함수/onclick 해석·링크의 Controller 연결은 금지**. PMD가 파싱 못 하는 레거시 JSP는 파일별 실패로 결과 기록할 수 있도록 예외화한다.
 - [ ] **Step 4: `mvn -q -Dtest=PmdJspAnalyzerTest test` PASS.** malformed JSP 단독 실패가 다음 파일 처리까지 막는지는 Task 10에서 추가 검증.
 - [ ] **Step 5: 해당 경로만 `git add` → `git commit -m "feat: extract JSP fields and link events"`.**
 
@@ -315,7 +315,7 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 
 ## Paseo Review / Delegation Handoff (계획 승인 **후**)
 
-1. **Paseo 투입 자료**: 승인 Spec 경로와 해시, 이 Implementation Plan 경로와 해시, `docs/research/2026-11-05-direct-javaparser-pmd-jsp-spike.md`, 참조 Golden 4종 해시 및 테스트 fixture 출처, `main` 기준 commit.
+1. **Paseo 투입 자료**: 승인 Spec 경로와 해시, 이 Implementation Plan 경로와 해시, 참조 Golden 4종 해시 및 테스트 fixture 출처, `main` 기준 commit. 로컬 JDK·Maven 환경 정보는 사용자의 후속 설정 공유 이후에 추가한다.
 2. **1차 단계는 리뷰**: Paseo가 (a) 승인 요구사항 전부가 Task/AC에 매핑됐는지, (b) 작업 순서·인터페이스와 의존성이 실행 가능한지, (c) 보안/오프라인 경계, (d) 기준본 미확보 리스크, (e) Java17·JSP 레거시 호환성을 검토. **리뷰 중 제품 코드를 수정하지 않는다.**
 3. **리뷰 결과 보고**: 오류/모호성은 구체적인 스펙·Task ID와 수정안으로 사용자에게 보고. 승인된 요구사항 자체를 일방 변경하지 않는다. 계획 변경이 필요하면 검토받고 plan revision을 기록한다.
 4. **개발 위임**: 사용자 지시가 있으면 Task 01→12를 **각 Task의 Red→Green→Refactor→커밋→변경 영향 검증** 게이트로 수행. 무단 차기 Task 전개 여부는 사용자의 그 시점 실행 지시를 따른다. 동일 파일에 여러 에이전트가 동시에 쓰지 않는다.
