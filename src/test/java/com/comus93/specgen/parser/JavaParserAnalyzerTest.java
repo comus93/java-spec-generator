@@ -13,9 +13,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.comus93.specgen.facts.JavaFacts;
+import com.comus93.specgen.facts.JavaFacts.CallFact;
 import com.comus93.specgen.facts.JavaFacts.ImportFact;
 import com.comus93.specgen.facts.JavaFacts.MethodFact;
 import com.comus93.specgen.facts.JavaFacts.StaticInitFact;
+import com.comus93.specgen.facts.JavaFacts.StepFact;
 import com.comus93.specgen.facts.JavaFacts.TypeRefFact;
 import com.comus93.specgen.facts.JavaFacts.VariableFact;
 
@@ -44,8 +46,30 @@ class JavaParserAnalyzerTest {
         assertEquals(List.of("ModelMap", "Todo", "BindingResult"), parameterTypes(addTodo));
         assertTrue(addTodo.startLine() > 0);
         assertTrue(addTodo.endLine() >= addTodo.startLine());
-        assertTrue(addTodo.steps().isEmpty());
+        assertEquals(List.of(
+                new StepFact(1, "call", 72, "", "result.hasErrors()", ""),
+                new StepFact(2, "branch", 72, "",
+                        "if (result.hasErrors()) { return \"todo\"; }", ""),
+                new StepFact(3, "return", 73, "if:true", "return \"todo\";", ""),
+                new StepFact(4, "call", 75, "", "retrieveLoggedinUserName()", ""),
+                new StepFact(5, "call", 75, "", "todo.getDesc()", ""),
+                new StepFact(6, "instantiate", 75, "", "new Date()", ""),
+                new StepFact(7, "call", 75, "",
+                        "service.addTodo(retrieveLoggedinUserName(), todo.getDesc(), new Date(), false)",
+                        ""),
+                new StepFact(8, "call", 77, "", "model.clear()", ""),
+                new StepFact(9, "return", 78, "", "return \"redirect:list-todos\";", "")),
+                addTodo.steps());
         assertTrue(addTodo.javadoc().isEmpty());
+
+        assertEquals(3, method(facts, "deleteTodo(ModelMap,int)").steps().size());
+        assertEquals(3, method(facts, "handleException(HttpServletRequest,Exception)").steps().size());
+        assertEquals(4, method(facts, "initBinder(WebDataBinder)").steps().size());
+        assertEquals(4, method(facts, "listTodos(ModelMap)").steps().size());
+        assertEquals(9, method(facts, "retrieveLoggedinUserName()").steps().size());
+        assertEquals(5, method(facts, "showTodoPage(ModelMap)").steps().size());
+        assertEquals(4, method(facts, "updateTodo(ModelMap,int)").steps().size());
+        assertEquals(7, method(facts, "updateTodo(ModelMap,Todo,BindingResult)").steps().size());
 
         assertEquals("protected", method(facts, "initBinder(WebDataBinder)").visibility());
         assertEquals("private", method(facts, "retrieveLoggedinUserName()").visibility());
@@ -123,7 +147,9 @@ class JavaParserAnalyzerTest {
                 new TypeRefFact(26, "import", "ExceptionController", null)),
                 importTypeRefs);
 
-        assertTrue(facts.calls().isEmpty());
+        assertEquals(27, facts.calls().size());
+        assertEquals(new CallFact(32, "[field-initializer]", "getLog", ""), facts.calls().get(0));
+        assertTrue(facts.calls().stream().allMatch(call -> call.targetId().isEmpty()));
         assertTrue(facts.staticInitializations().isEmpty());
     }
 
@@ -133,6 +159,21 @@ class JavaParserAnalyzerTest {
 
         assertEquals(5, facts.methods().size());
         assertEquals(5, facts.staticInitializations().size());
+        assertEquals(15, facts.calls().size());
+        assertEquals(List.of(
+                new CallFact(16, "[static initializer]", "add", ""),
+                new CallFact(18, "[static initializer]", "add", ""),
+                new CallFact(19, "[static initializer]", "add", "")),
+                facts.calls().subList(0, 3));
+        assertTrue(facts.calls().stream().allMatch(call -> call.targetId().isEmpty()));
+
+        assertEquals(2, method(facts, "addTodo(String,String,Date,boolean)").steps().size());
+        MethodFact deleteTodo = method(facts, "deleteTodo(int)");
+        assertEquals(9, deleteTodo.steps().size());
+        assertEquals("while:body>if:true", deleteTodo.steps().get(8).branchPath());
+        assertEquals(5, method(facts, "retrieveTodo(int)").steps().size());
+        assertEquals(8, method(facts, "retrieveTodos(String)").steps().size());
+        assertEquals(2, method(facts, "updateTodo(Todo)").steps().size());
 
         List<StaticInitFact> staticBlock = facts.staticInitializations().stream()
                 .filter(fact -> fact.sourceKind().equals("static initializer"))

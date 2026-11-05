@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import com.comus93.specgen.facts.JavaFacts;
+import com.comus93.specgen.facts.JavaFacts.CallFact;
 import com.comus93.specgen.facts.JavaFacts.ImportFact;
 import com.comus93.specgen.facts.JavaFacts.MethodFact;
 import com.comus93.specgen.facts.JavaFacts.ParameterFact;
@@ -92,9 +93,16 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
 
         List<ImportFact> imports = extractImports(unit);
         List<TypeRefFact> typeRefs = extractTypeRefs(unit, imports);
+        List<CallFact> calls = extractCalls(unit);
 
-        return new JavaFacts(sourceFile, typeKind(unit), variables, methods, List.of(),
+        return new JavaFacts(sourceFile, typeKind(unit), variables, methods, calls,
                 typeRefs, imports, staticInitializations);
+    }
+
+    private static List<CallFact> extractCalls(CompilationUnit unit) {
+        List<CallFact> calls = new ArrayList<>();
+        new CallCollector(calls).visit(unit, null);
+        return calls;
     }
 
     private static String problemLocation(List<Problem> problems) {
@@ -410,7 +418,8 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
             methods.add(new MethodFact(method.getNameAsString(),
                     signature(method.getNameAsString(), method.getParameters()),
                     parameters(method.getParameters()), method.getType().asString(),
-                    visibility(method), line(method), endLine(method), javadoc(method), List.of()));
+                    visibility(method), line(method), endLine(method), javadoc(method),
+                    JavaStepVisitor.extract(method)));
             super.visit(method, arg);
         }
 
@@ -434,6 +443,46 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
                 }
             }
             super.visit(initializer, arg);
+        }
+    }
+
+    private static final class CallCollector extends VoidVisitorAdapter<Void> {
+
+        private final List<CallFact> calls;
+
+        private CallCollector(List<CallFact> calls) {
+            this.calls = calls;
+        }
+
+        @Override
+        public void visit(FieldDeclaration field, Void arg) {
+            for (VariableDeclarator variable : field.getVariables()) {
+                variable.getInitializer().ifPresent(initializer ->
+                        calls.addAll(JavaStepVisitor.calls(initializer, "[field-initializer]")));
+            }
+            super.visit(field, arg);
+        }
+
+        @Override
+        public void visit(InitializerDeclaration initializer, Void arg) {
+            String callerName = initializer.isStatic()
+                    ? "[static initializer]"
+                    : "[instance initializer]";
+            calls.addAll(JavaStepVisitor.calls(initializer, callerName));
+            super.visit(initializer, arg);
+        }
+
+        @Override
+        public void visit(MethodDeclaration method, Void arg) {
+            calls.addAll(JavaStepVisitor.calls(method));
+            super.visit(method, arg);
+        }
+
+        @Override
+        public void visit(ConstructorDeclaration constructor, Void arg) {
+            calls.addAll(JavaStepVisitor.calls(constructor,
+                    signature(constructor.getNameAsString(), constructor.getParameters())));
+            super.visit(constructor, arg);
         }
     }
 
