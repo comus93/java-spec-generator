@@ -99,11 +99,29 @@ class JavaParserAnalyzerTest {
         List<TypeRefFact> importTypeRefs = facts.typeRefs().stream()
                 .filter(ref -> ref.kind().equals("import"))
                 .toList();
-        assertEquals(21, importTypeRefs.size());
-        assertEquals("SimpleDateFormat", importTypeRefs.get(0).name());
-        assertEquals(3, importTypeRefs.get(0).line());
-        assertEquals("ExceptionController", importTypeRefs.get(20).name());
-        assertEquals(26, importTypeRefs.get(20).line());
+        assertEquals(List.of(
+                new TypeRefFact(3, "import", "SimpleDateFormat", null),
+                new TypeRefFact(4, "import", "Date", null),
+                new TypeRefFact(6, "import", "HttpServletRequest", null),
+                new TypeRefFact(7, "import", "Valid", null),
+                new TypeRefFact(9, "import", "Log", null),
+                new TypeRefFact(10, "import", "LogFactory", null),
+                new TypeRefFact(11, "import", "Autowired", null),
+                new TypeRefFact(12, "import", "CustomDateEditor", null),
+                new TypeRefFact(13, "import", "SecurityContextHolder", null),
+                new TypeRefFact(14, "import", "UserDetails", null),
+                new TypeRefFact(15, "import", "Controller", null),
+                new TypeRefFact(16, "import", "ModelMap", null),
+                new TypeRefFact(17, "import", "BindingResult", null),
+                new TypeRefFact(18, "import", "WebDataBinder", null),
+                new TypeRefFact(19, "import", "ExceptionHandler", null),
+                new TypeRefFact(20, "import", "InitBinder", null),
+                new TypeRefFact(21, "import", "RequestMapping", null),
+                new TypeRefFact(22, "import", "RequestMethod", null),
+                new TypeRefFact(23, "import", "RequestParam", null),
+                new TypeRefFact(24, "import", "SessionAttributes", null),
+                new TypeRefFact(26, "import", "ExceptionController", null)),
+                importTypeRefs);
 
         assertTrue(facts.calls().isEmpty());
         assertTrue(facts.staticInitializations().isEmpty());
@@ -327,6 +345,37 @@ class JavaParserAnalyzerTest {
         assertStaticFact(blockFacts, 10, "", "this.instance.add(new Widget())");
         assertStaticFact(blockFacts, 11, "declared", "new java.util.ArrayList<>()");
         assertStaticFact(blockFacts, 12, "", "instance = new java.util.ArrayList<>()");
+    }
+
+    @Test
+    void rejectsQualifiedReceiversThatOnlyShareAStaticFieldName() throws Exception {
+        Path source = tempDir.resolve("QualifiedTargets.java");
+        Files.writeString(source, """
+                class QualifiedTargets {
+                    static java.util.List<String> declared = new java.util.ArrayList<>();
+
+                    static {
+                        other.declared.add(new Widget());
+                        other.declared = new java.util.ArrayList<>();
+                        this.declared.add(new Widget());
+                        QualifiedTargets.declared.add(new Widget());
+                        declared.add(new Widget());
+                    }
+                }
+                """);
+
+        JavaFacts facts = analyzer.analyze(source);
+
+        List<StaticInitFact> blockFacts = facts.staticInitializations().stream()
+                .filter(fact -> fact.sourceKind().equals("static initializer"))
+                .toList();
+        assertEquals(5, blockFacts.size());
+
+        assertStaticFact(blockFacts, 5, "", "other.declared.add(new Widget())");
+        assertStaticFact(blockFacts, 6, "", "other.declared = new java.util.ArrayList<>()");
+        assertStaticFact(blockFacts, 7, "declared", "new Widget()");
+        assertStaticFact(blockFacts, 8, "declared", "new Widget()");
+        assertStaticFact(blockFacts, 9, "declared", "new Widget()");
     }
 
     @Test

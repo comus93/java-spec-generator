@@ -40,6 +40,7 @@ import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.CastExpr;
 import com.github.javaparser.ast.expr.ClassExpr;
 import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.InstanceOfExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
@@ -120,9 +121,12 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
     }
 
     @SuppressWarnings("unchecked")
-    private static Set<String> staticFieldNames(InitializerDeclaration initializer) {
+    private static TypeDeclaration<?> enclosingDeclaredType(InitializerDeclaration initializer) {
+        return initializer.findAncestor(TypeDeclaration.class).orElse(null);
+    }
+
+    private static Set<String> staticFieldNames(TypeDeclaration<?> type) {
         Set<String> names = new LinkedHashSet<>();
-        TypeDeclaration<?> type = initializer.findAncestor(TypeDeclaration.class).orElse(null);
         if (type == null) {
             return names;
         }
@@ -283,14 +287,15 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
         return node.getEnd().map(position -> position.line).orElse(0);
     }
 
-    private static StaticInitFact staticBlockFact(Statement statement, Set<String> staticFieldNames) {
+    private static StaticInitFact staticBlockFact(Statement statement, Set<String> staticFieldNames,
+            String enclosingTypeName) {
         int line = line(statement);
         if (statement instanceof ExpressionStmt expressionStatement) {
             Expression expression = expressionStatement.getExpression();
             if (expression.isMethodCallExpr()) {
                 MethodCallExpr call = expression.asMethodCallExpr();
                 String target = call.getScope()
-                        .map(JavaParserAnalyzer::fieldNameCandidate)
+                        .map(scope -> fieldNameCandidate(scope, enclosingTypeName))
                         .filter(staticFieldNames::contains)
                         .orElse("");
                 if (target.isEmpty()) {
@@ -304,7 +309,7 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
             if (expression.isAssignExpr()) {
                 AssignExpr assignment = expression.asAssignExpr();
                 String target = Optional.of(assignment.getTarget())
-                        .map(JavaParserAnalyzer::fieldNameCandidate)
+                        .map(scope -> fieldNameCandidate(scope, enclosingTypeName))
                         .filter(staticFieldNames::contains)
                         .orElse("");
                 if (target.isEmpty()) {
@@ -318,12 +323,16 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
         return new StaticInitFact("", "static initializer", statement.toString(), line);
     }
 
-    private static String fieldNameCandidate(Expression expression) {
+    private static String fieldNameCandidate(Expression expression, String enclosingTypeName) {
         if (expression.isNameExpr()) {
             return expression.asNameExpr().getNameAsString();
         }
         if (expression.isFieldAccessExpr()) {
-            return expression.asFieldAccessExpr().getNameAsString();
+            FieldAccessExpr access = expression.asFieldAccessExpr();
+            String qualifier = access.getScope().toString();
+            if (qualifier.equals("this") || (!enclosingTypeName.isEmpty() && qualifier.equals(enclosingTypeName))) {
+                return access.getNameAsString();
+            }
         }
         return "";
     }
@@ -417,9 +426,11 @@ public final class JavaParserAnalyzer implements SourceAnalyzer<JavaFacts> {
         @Override
         public void visit(InitializerDeclaration initializer, Void arg) {
             if (initializer.isStatic()) {
-                Set<String> staticFieldNames = staticFieldNames(initializer);
+                TypeDeclaration<?> enclosingType = enclosingDeclaredType(initializer);
+                Set<String> staticFieldNames = staticFieldNames(enclosingType);
+                String enclosingTypeName = enclosingType == null ? "" : enclosingType.getNameAsString();
                 for (Statement statement : initializer.getBody().getStatements()) {
-                    staticInitializations.add(staticBlockFact(statement, staticFieldNames));
+                    staticInitializations.add(staticBlockFact(statement, staticFieldNames, enclosingTypeName));
                 }
             }
             super.visit(initializer, arg);
