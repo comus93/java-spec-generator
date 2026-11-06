@@ -292,7 +292,9 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - [ ] **Step 4: `mvn -q -Dtest=ModuleTableModelTest test` PASS.** Windows에서 `mvn -q exec:java -Dexec.mainClass=com.comus93.specgen.SpecGeneratorApp -Dexec.args="gui"`로 실행해 폴더 드롭/추가·편집·삭제·Java/JSP 결과 생성을 수동 점검한다. 헤드리스 CI에서는 창 자체를 띄우지 않는다.
 - [ ] **Step 5: GUI 파일·테스트·entrypoint만 `git add` → `git commit -m "feat: provide Swing job configuration interface"`.**
 
-## Task 12: 배포 패키지·의존성 보안·Golden 통합 검증
+## Task 12: 배포 패키지·의존성 보안·핵심 동작 통합 검증
+
+**2026-11-06 검증 정책 변경:** 승인된 Design Spec §13의 핵심 동작 검증을 우선한다. Golden 4종과 manifest는 보존·참고만 하며 Golden 전체 셀/문자열/행 위치/공란/스타일 차이는 FAIL 게이트가 아니다. 실제 소스 기반 파싱 정확성, 필수 시트·주요 데이터, Excel 재열기, CLI/GUI 실행, 파일별 실패 격리, 원본 보존, 출력 덮어쓰기·비대상 파일 보존을 PASS/FAIL로 평가한다. Java 17 실 JVM·오프라인·보안 검증은 별도 배포 게이트로 분리한다. 이미 통과한 무관한 테스트를 반복하지 않고 변경 영향만 재검증한다.
 
 **Files**
 - Modify: `pom.xml` (Shade 실행 JAR, Main-Class, 서비스 리소스 병합)
@@ -306,11 +308,11 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - Consumes: Task 01~11 산출물과 실제 Golden Sample 4종.
 - Produces: `target/spec-generator.jar` 한 파일의 Java 17+ 실행형, Windows `jpackage` app-image에 GUI 및 CLI 런처, 릴리스 검증 기록.
 
-- [ ] **Step 1: `GoldenSampleTest`와 `verify-release.ps1` 검증 작성.** 최신 `docs/golden/` 기준 Excel 파일 **실물+SHA-256** 확인, Java 9/10시트·JSP 5시트 및 4건의 헤더/핵심 셀/빈칸/회색조/2행 설명 없음, 표제부 D:F 회색, 콘텐츠 윤곽선 테두리, DETAIL `[Lxxx]`·행번호·AST 메타데이터 부재, 상대 경로 전용 시트 및 처리단계/상세 사양 분리 검증; 빌드 산출물 직접 재열기. 작성일은 기준 샘플 날짜와 다른 경우 **명시적 override 또는 해당 셀만 환경값 검증**; 임의의 광범위 비교 제외 금지.
-- [ ] **Step 2: `mvn -q -Dtest=GoldenSampleTest test` RED 확인.** 기준 파일이 없으면 **BLOCKED**로 기록하고 가짜 Golden을 만들지 않는다.
+- [ ] **Step 1: `GoldenSampleTest`와 `verify-release.ps1`의 기능 게이트 정비.** Golden 4종의 존재·SHA-256은 자산 보존 목적으로 확인하되 출력 결과와 셀/서식 비교하지 않는다. Java/JSP 실제 fixture에서 핵심 사실(메서드·호출·처리단계·필드·EL·링크) 추출과 필수 시트·주요 데이터·상대 경로·내부 AST 정보 비노출을 검증한다. Excel 파일을 직접 다시 열어 읽을 수 있는지 확인한다. 날짜는 지정 override 및 소스 메타데이터 정책으로 검증하고 Golden의 날짜와 비교하지 않는다.
+- [ ] **Step 2: 핵심 동작 테스트의 실패 케이스를 확인하고 수정 후 PASS를 확보한다.** Golden 파일 부재나 출력 형식 차이는 핵심 동작 테스트를 BLOCKED/FAIL로 만들지 않는다. 참고 자산의 무결성 문제는 별도 기록한다.
 - [ ] **Step 3: Maven Shade(`minimizeJar=false`, 서비스 로더 리소스 유지)와 `jpackage --type app-image`를 설정.** JDK21 이미지에 자체 런타임 포함, GUI 런처와 별도 CLI 런처 생성. `dependency:tree`, 고정 의존성·라이선스·SBOM 및 `Get-FileHash` SHA-256을 `docs/security/dependency-inventory.md`에 기록. 전이 의존성·JRE17 classfile 호환성 검증 후 버전 최종 고정, 취약점 발견 시 계획서/스펙 변경관리.
-- [ ] **Step 4: 릴리스 검증.** `mvn -q clean verify`; **실제 Java 17 JVM**의 `java -jar target/spec-generator.jar generate --config ...`; Windows 실행 이미지에 Java PATH가 없어도 GUI/CLI 작동; 네트워크 차단된 환경에서 동일 소스·같은 설정으로 출력; 승인 Golden 4건과 값·시각 스타일 비교; 반복 실행에서 기존 Excel 덮어쓰기 및 비대상 파일 보존. 결과는 `docs/operations/README.md`에 테스트 일자·JRE 버전·PASS/FAIL/BLOCKED로 남긴다.
-- [ ] **Step 5: `git diff --check`, 테스트 증빙 점검, `git add pom.xml scripts docs/security docs/operations src/test/java/com/comus93/specgen/validation` (및 승인된 기준본만) 후 `git commit -m "build: package and verify offline Java 17 generator"`.** 미검증 Golden/오프라인 항목이 있으면 릴리스를 PASS로 선언하지 않는다.
+- [ ] **Step 4: 기능 및 배포 게이트 분리 검증.** 기능: 변경 영향 테스트와 `mvn -q clean verify`, Java/JSP CLI·GUI 실행, Excel 재열기, 파싱 정확성, 오류 격리, 반복 덮어쓰기 및 비대상 파일 보존. Golden 셀/스타일 전체 비교와 차이 건수 FAIL 판정은 실행하지 않는다. 배포: **실제 Java 17 JVM**의 `java -jar target/spec-generator.jar generate --config ...`, Windows 실행 이미지 GUI/CLI, 네트워크 차단 환경, 의존성 보안/라이선스를 별도 PASS/FAIL/BLOCKED로 기록한다. 결과는 `docs/operations/README.md`에 구분하여 남긴다.
+- [ ] **Step 5: `git diff --check`, 테스트 증빙 점검, 변경 파일만 커밋한다.** 핵심 동작 PASS와 배포 환경 PASS/FAIL/BLOCKED를 구분해 보고한다. Golden 형식 차이는 릴리스 차단 사유가 아니며, 미검증 Java 17/오프라인/보안 게이트를 통과했다고 선언하지 않는다.
 
 ## Coverage Check: Spec → Task
 
