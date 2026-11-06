@@ -42,16 +42,36 @@ class JspSpecMapperTest {
         assertTrue(book.sheets().stream().allMatch(s -> s.rows().get(0).role() == RowKind.TITLE && s.rows().get(1).role() == RowKind.EMPTY));
     }
 
+    @Test void mapsTableHeadersAndLinksToSourceGroundedScreenFields() throws Exception {
+        WorkbookModel book = map("list-todos.jsp");
+        List<List<Object>> fields = book.sheets().get(1).rows().stream()
+                .filter(r -> r.role() == RowKind.DATA).map(SheetRow::values).toList();
+        assertEquals(List.of("<spring:message>", "Description", "Target Date", "Is Completed?", "Update", "Delete", "Add"),
+                fields.stream().map(row -> row.get(0)).toList());
+        assertEquals("todo", fields.get(1).get(1));
+        assertEquals("${todo.desc}", fields.get(1).get(2));
+        assertEquals("EL", fields.get(1).get(5));
+        assertEquals("${todo.targetDate}", fields.get(2).get(2));
+        assertEquals("fmt:formatDate", fields.get(2).get(5));
+        assertEquals("${todo.done}", fields.get(3).get(2));
+        assertEquals("${todo.id}", fields.get(4).get(2));
+        assertEquals("a", fields.get(4).get(5));
+        assertNull(fields.get(6).get(1));
+        assertEquals("todo.caption", fields.get(0).get(6));
+    }
+
     @Test void mapsFormFactsWithoutInventingFields() throws Exception {
         WorkbookModel book = map("todo.jsp");
         List<SheetRow> rows = book.sheets().get(1).rows();
         assertEquals(List.of("화면 필드", "Object", "참조 필드", "Edit", "Remark (속성 원문)", "항목 유형", "다국어 ID"), rows.get(2).values());
-        SheetRow desc = rows.stream().filter(r -> !r.values().isEmpty() && "desc".equals(r.values().get(0))).findFirst().orElseThrow();
+        SheetRow desc = rows.stream().filter(r -> !r.values().isEmpty() && "Description".equals(r.values().get(0))).findFirst().orElseThrow();
         assertEquals("todo", desc.values().get(1));
-        assertNull(desc.values().get(2));
+        assertEquals("desc", desc.values().get(2));
         assertNull(desc.values().get(3));
         assertTrue(desc.values().get(4).toString().contains("path=\"desc\""));
+        assertEquals("form:input", desc.values().get(5));
         assertNull(desc.values().get(6));
+        assertTrue(rows.stream().anyMatch(r -> !r.values().isEmpty() && "Submit".equals(r.values().get(0))));
         assertEquals(10, book.sheets().get(0).rows().stream().filter(r -> r.role() == RowKind.DATA).count());
         assertTrue(book.sheets().get(2).rows().stream().filter(r -> r.role() == RowKind.DATA).allMatch(r -> r.values().size() == 3));
     }

@@ -18,9 +18,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -194,49 +196,144 @@ class GoldenSampleTest {
     private void assertSameSheetContract(Workbook golden, Workbook actual, GoldenCase testCase) {
         assertEquals(golden.getNumberOfSheets(), actual.getNumberOfSheets(),
                 "Regenerated sheet count differs from Golden: " + testCase.goldenFile());
+
         for (int index = 0; index < golden.getNumberOfSheets(); index++) {
             Sheet expected = golden.getSheetAt(index);
             Sheet source = actual.getSheetAt(index);
             assertEquals(expected.getSheetName(), source.getSheetName(),
                     "Regenerated sheet order differs from Golden");
-
-            boolean lastSheet = index == expected.getWorkbook().getNumberOfSheets() - 1;
-            int expectedWidth = Math.max(sheetWidth(expected, index == 0 ? 6 : 1), lastSheet ? 5 : 1);
-            int actualWidth = Math.max(sheetWidth(source, index == 0 ? 6 : 1), lastSheet ? 5 : 1);
-            List<List<String>> expectedRows = nonEmptyRows(expected, expectedWidth);
-            List<List<String>> actualRows = nonEmptyRows(source, actualWidth);
-            if (index == 0) {
-                assertEquals(expectedRows, actualRows, "Cover sheet content differs from Golden");
+            int width = maxWidth(expected);
+            if (rowValues(expected, 0, width).stream().anyMatch(value -> !value.isEmpty())) {
+                assertPhysicalRow(expected, source, 0, width, "title");
             } else {
-                int headerIndex = lastSheet ? 4 : 3;
-                List<String> expectedHeader = rowValues(expected, headerIndex, expectedWidth);
-                assertTrue(actualRows.stream().anyMatch(expectedHeader::equals),
-                        "Regenerated header does not match Golden on sheet " + expected.getSheetName());
+                assertNotNull(source.getRow(0), "Physical title row must exist on " + expected.getSheetName());
+            }
+            assertPhysicalRow(expected, source, 1, width, "blank spacer");
+            boolean lastSheet = index == golden.getNumberOfSheets() - 1;
+            int headerIndex = lastSheet && testCase.mode() == SourceMode.JSP ? 4 : 3;
+            assertPhysicalRow(expected, source, headerIndex, width, "header");
+            if (width > 1) {
+                assertMergedWidth(source, 0, width);
             }
         }
 
         Sheet expectedCover = golden.getSheetAt(0);
         Sheet actualCover = actual.getSheetAt(0);
-        assertCoverBand(actualCover, findHeaderRow(actualCover, rowValues(expectedCover, 3, coverWidth(expectedCover))));
+        for (int row = 0; row <= 13; row++) {
+            assertPhysicalRow(expectedCover, actualCover, row, 6, "cover");
+        }
+        assertCoverBand(actualCover, 3);
+        assertTableOutline(actual);
         assertMonochrome(actual, testCase.goldenFile());
 
         int pathIndex = testCase.mode() == SourceMode.JAVA
                 ? golden.getNumberOfSheets() - 2 : 3;
-        List<List<String>> expectedPath = nonEmptyRows(golden.getSheetAt(pathIndex), 1);
-        List<List<String>> actualPath = nonEmptyRows(actual.getSheetAt(pathIndex), 1);
-        assertEquals(expectedPath, actualPath, "Source path column must match Golden");
-        assertTrue(actualPath.stream().skip(1).allMatch(row -> row.size() == 1),
-                "The source path sheet must use exactly one column");
+        Sheet expectedPath = golden.getSheetAt(pathIndex);
+        Sheet actualPath = actual.getSheetAt(pathIndex);
+        for (int row = 0; row <= 4; row++) {
+            assertPhysicalRow(expectedPath, actualPath, row, 1, "source path");
+        }
 
-        if (testCase.mode() == SourceMode.JAVA) {
-            Sheet detail = actual.getSheetAt(actual.getNumberOfSheets() - 1);
-            for (int row = 4; row <= detail.getLastRowNum(); row++) {
-                String value = rowValues(detail, row, 7).get(4);
+        if (testCase.mode() == SourceMode.JSP) {
+            Sheet expectedFields = golden.getSheetAt(1);
+            Sheet actualFields = actual.getSheetAt(1);
+            int fieldWidth = maxWidth(expectedFields);
+            for (int row = 4; row <= lastNonEmptyRow(expectedFields, fieldWidth); row++) {
+                assertPhysicalRow(expectedFields, actualFields, row, fieldWidth, "screen field");
+            }
+
+            Sheet expectedFlows = golden.getSheetAt(2);
+            Sheet actualFlows = actual.getSheetAt(2);
+            int flowWidth = maxWidth(expectedFlows);
+            for (int row = 4; row <= lastNonEmptyRow(expectedFlows, flowWidth); row++) {
+                assertFlowRow(expectedFlows, actualFlows, row, flowWidth);
+            }
+
+            Sheet expectedDetail = golden.getSheetAt(golden.getNumberOfSheets() - 1);
+            Sheet actualDetail = actual.getSheetAt(actual.getNumberOfSheets() - 1);
+            int detailWidth = maxWidth(expectedDetail);
+            for (int row = 0; row <= lastNonEmptyRow(expectedDetail, detailWidth); row++) {
+                assertPhysicalRow(expectedDetail, actualDetail, row, detailWidth, "detail");
+            }
+            if ("list-todos".equals(testCase.programId())) {
+                assertJspLinks(actualDetail);
+            }
+        } else {
+            Sheet expectedDetail = golden.getSheetAt(golden.getNumberOfSheets() - 1);
+            Sheet actualDetail = actual.getSheetAt(actual.getNumberOfSheets() - 1);
+            int detailWidth = maxWidth(expectedDetail);
+            for (int row = 0; row <= 3; row++) {
+                assertPhysicalRow(expectedDetail, actualDetail, row, detailWidth, "detail header");
+            }
+            for (int row = 4; row <= actualDetail.getLastRowNum(); row++) {
+                String value = rowValues(actualDetail, row, detailWidth).get(4);
                 assertFalse(SOURCE_LOCATION.matcher(value).find(),
                         "Regenerated detail must not contain [Lxxx] source markers");
             }
-        } else if ("list-todos".equals(testCase.programId())) {
-            assertJspLinks(actual.getSheetAt(actual.getNumberOfSheets() - 1));
+        }
+    }
+
+    private static void assertPhysicalRow(Sheet expected, Sheet actual, int row, int width, String label) {
+        assertEquals(rowValues(expected, row, width), rowValues(actual, row, width),
+                "Physical " + label + " row " + (row + 1) + " differs from Golden on "
+                        + expected.getSheetName());
+    }
+
+    private static void assertFlowRow(Sheet expected, Sheet actual, int row, int width) {
+        List<String> expectedValues = rowValues(expected, row, width);
+        List<String> actualValues = rowValues(actual, row, width);
+        assertEquals(expectedValues.get(0), actualValues.get(0),
+                "Flow sequence differs at physical row " + (row + 1));
+        assertEquals(expectedValues.get(1), actualValues.get(1),
+                "Flow tag/file differs at physical row " + (row + 1));
+        assertEquals(attributeMap(expectedValues.get(2)), attributeMap(actualValues.get(2)),
+                "Flow attributes differ at physical row " + (row + 1));
+    }
+
+    private static Map<String, String> attributeMap(String text) {
+        Map<String, String> result = new TreeMap<>();
+        if (text == null || text.isBlank()) {
+            return result;
+        }
+        for (String part : text.split(";")) {
+            String entry = part.trim();
+            if (entry.isEmpty()) {
+                continue;
+            }
+            int separator = entry.indexOf('=');
+            String key = separator < 0 ? entry : entry.substring(0, separator).trim();
+            String value = separator < 0 ? "" : entry.substring(separator + 1).trim();
+            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+                value = value.substring(1, value.length() - 1);
+            }
+            result.put(key, value);
+        }
+        return result;
+    }
+
+    private static int lastNonEmptyRow(Sheet sheet, int width) {
+        for (int row = sheet.getLastRowNum(); row >= 0; row--) {
+            if (rowValues(sheet, row, width).stream().anyMatch(value -> !value.isEmpty())) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    private static void assertTableOutline(Workbook workbook) {
+        for (int index = 0; index < workbook.getNumberOfSheets() - 1; index++) {
+            Sheet sheet = workbook.getSheetAt(index);
+            for (Cell cell : sheet.getRow(3)) {
+                if (!new DataFormatter(Locale.ROOT).formatCellValue(cell).isBlank()) {
+                    var style = cell.getCellStyle();
+                    boolean bordered = style.getBorderTop() != BorderStyle.NONE
+                            || style.getBorderBottom() != BorderStyle.NONE
+                            || style.getBorderLeft() != BorderStyle.NONE
+                            || style.getBorderRight() != BorderStyle.NONE;
+                    assertTrue(bordered, "Header cell must keep a visible table outline on "
+                            + sheet.getSheetName());
+                }
+            }
         }
     }
 
@@ -394,11 +491,11 @@ class GoldenSampleTest {
     }
 
     private static int sheetWidth(Sheet sheet, int fallback) {
-        Row header = sheet.getRow(3);
-        if (header != null && header.getLastCellNum() > 0) {
-            return header.getLastCellNum();
-        }
-        int max = fallback;
+        return Math.max(fallback, maxWidth(sheet));
+    }
+
+    private static int maxWidth(Sheet sheet) {
+        int max = 1;
         for (int row = 0; row <= sheet.getLastRowNum(); row++) {
             Row current = sheet.getRow(row);
             if (current != null) {

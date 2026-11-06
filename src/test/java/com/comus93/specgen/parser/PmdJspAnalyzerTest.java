@@ -30,11 +30,11 @@ class PmdJspAnalyzerTest {
         JspFacts facts = analyzer.analyze(source);
 
         assertEquals(source, facts.sourceFile());
-        ScreenFieldFact desc = field(facts, "desc");
+        ScreenFieldFact desc = field(facts, "Description");
         assertEquals("todo", desc.object());
-        assertNull(desc.referenceField());
+        assertEquals("desc", desc.referenceField());
         assertEquals(Boolean.TRUE, desc.editable());
-        assertEquals("text", desc.fieldType());
+        assertEquals("form:input", desc.fieldType());
         assertEquals("required", desc.rawAttributes().get("required"));
         assertEquals("desc", desc.rawAttributes().get("path"));
         assertNull(desc.i18nId());
@@ -43,7 +43,12 @@ class PmdJspAnalyzerTest {
         ScreenFieldFact id = field(facts, "id");
         assertEquals(Boolean.FALSE, id.editable());
         assertEquals("id", id.rawAttributes().get("path"));
-        assertNull(id.referenceField());
+        assertEquals("id", id.referenceField());
+        assertEquals("form:hidden", id.fieldType());
+        ScreenFieldFact submit = field(facts, "Submit");
+        assertEquals("todo", submit.object());
+        assertNull(submit.referenceField());
+        assertEquals("input", submit.fieldType());
         assertTrue(facts.events().isEmpty());
         assertTrue(facts.constants().isEmpty());
         assertFalse(facts.flows().isEmpty());
@@ -68,6 +73,18 @@ class PmdJspAnalyzerTest {
         assertTrue(facts.flows().stream()
                 .anyMatch(flow -> flow.tagOrFile().contains("${todo.desc}")
                         || flow.attributes().values().stream().anyMatch(value -> value.contains("${todo.targetDate}"))));
+
+        List<ScreenFieldFact> fields = facts.screenFields();
+        assertEquals(List.of("<spring:message>", "Description", "Target Date", "Is Completed?", "Update", "Delete", "Add"),
+                fields.stream().map(ScreenFieldFact::fieldName).toList());
+        assertEquals("todo", fields.get(1).object());
+        assertEquals("${todo.desc}", fields.get(1).referenceField());
+        assertEquals("${todo.targetDate}", fields.get(2).referenceField());
+        assertEquals("fmt:formatDate", fields.get(2).fieldType());
+        assertEquals("${todo.id}", fields.get(4).referenceField());
+        assertEquals("a", fields.get(4).fieldType());
+        assertNull(fields.get(6).object());
+        assertEquals("todo.caption", fields.get(0).i18nId());
 
         List<EventFact> events = facts.events();
         assertEquals(3, events.size(), "only three <a href> tags produce LINK_CLICK");

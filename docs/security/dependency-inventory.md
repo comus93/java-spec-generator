@@ -153,10 +153,10 @@ not downloaded at runtime; all Java dependencies are bundled in the shaded JAR.
 
 | Artifact | SHA-256 |
 |---|---|
-| `target/spec-generator.jar` | `be4dc689d0bb051743814663437444910c023137ccf2cf14eda5810f9c318240` |
+| `target/spec-generator.jar` | `726e1cd99f11fe9af23f93124cbba34bda684f2c03008e1a374216ddb188e292` |
 | `target/jpackage/SpecGenerator/SpecGenerator.exe` (CLI launcher) | `b987164e33cd942bfa8657e5a4a2ec953404783fa4f7b5b70b1c6576112c679a` |
 | `target/jpackage/SpecGenerator/SpecGeneratorGUI.exe` (GUI launcher) | `537c9bc4c9d717b0c04ef55ae008a5a7e19becea6f591e347c310871d94fdc64` |
-| `target/jpackage/SpecGenerator/app/spec-generator.jar` | `be4dc689d0bb051743814663437444910c023137ccf2cf14eda5810f9c318240` |
+| `target/jpackage/SpecGenerator/app/spec-generator.jar` | `726e1cd99f11fe9af23f93124cbba34bda684f2c03008e1a374216ddb188e292` |
 | `target/jpackage/SpecGenerator/app/SpecGenerator.cfg` | `6dc3a2d7dfdcaadff363f621273b33e3b7478ce0001fcb4d88cf1c572c98870f` |
 | `target/jpackage/SpecGenerator/app/SpecGeneratorGUI.cfg` | `b86be8d7390acb26bc1e970c9ad64b612ad8a24943a671e2cc9890466b2b237f` |
 

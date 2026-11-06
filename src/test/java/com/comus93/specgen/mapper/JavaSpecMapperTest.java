@@ -14,6 +14,7 @@ import java.util.List;
 
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,7 +50,7 @@ class JavaSpecMapperTest {
         JavaFacts facts = analyze("TodoController");
         WorkbookModel model = map(facts, null);
         assertEquals(facts.variables().stream().map(v -> cells(v.kind(), v.name(), v.type(),
-                v.modifiers(), v.lifetime(), v.initializer(), v.owner())).toList(),
+                v.modifiers(), v.lifetime(), v.initializer(), ownerName(v.owner(), facts))).toList(),
                 data(sheet(model, "02_OBJ정의")));
         assertEquals(facts.calls().stream().map(c -> cells(c.callerName(), c.calledName(), c.targetId())).toList(),
                 data(sheet(model, "05_호출관계")));
@@ -69,8 +70,8 @@ class JavaSpecMapperTest {
         for (SheetModel s : model.sheets()) {
             assertEquals(RowKind.TITLE, s.rows().get(0).role());
             assertEquals(RowKind.EMPTY, s.rows().get(1).role());
-            assertEquals(RowKind.HEADER, s.rows().get(3).role());
-            for (Object value : s.rows().get(3).values()) {
+            assertEquals(RowKind.HEADER, s.rows().get(2).role());
+            for (Object value : s.rows().get(2).values()) {
                 assertFalse(List.of("소스 행", "시작행", "끝행", "처리 단계 수", "AST 노드 종류", "AST 깊이")
                         .contains(value));
             }
@@ -148,6 +149,25 @@ class JavaSpecMapperTest {
         assertTrue(blank(data(model.sheets().get(0)).get(9).get(2)));
     }
 
+    @Test
+    void writtenWorkbookKeepsGoldenTitleBlankAndHeaderRows() throws Exception {
+        JavaFacts facts = analyze("TodoController");
+        WorkbookModel model = map(facts, LocalDate.of(2019, 10, 28));
+        Path output = temp.resolve("physical-layout.xlsx");
+        new PoiWorkbookWriter().write(model, output, OutputFormat.XLSX);
+
+        try (Workbook workbook = WorkbookFactory.create(output.toFile())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            assertEquals(model.sheets().get(0).rows().get(0).values().get(0),
+                    sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("", new DataFormatter().formatCellValue(sheet.getRow(1).getCell(0)));
+            assertNull(sheet.getRow(2), "Golden leaves physical row 3 as a visual spacer");
+            assertEquals(model.sheets().get(0).rows().get(2).values().get(0),
+                    sheet.getRow(3).getCell(0).getStringCellValue());
+            assertEquals("01", sheet.getRow(4).getCell(0).getStringCellValue());
+        }
+    }
+
     private void compareGolden(String name, int count) throws Exception {
         JavaFacts facts = analyze(name);
         WorkbookModel model = map(facts, LocalDate.of(2019, 10, 28));
@@ -160,8 +180,8 @@ class JavaSpecMapperTest {
                 SheetModel actual = model.sheets().get(i);
                 Sheet expected = golden.getSheetAt(i);
                 assertEquals(expected.getSheetName(), actual.name());
-                int width = actual.rows().get(3).values().size();
-                assertEquals(goldenRow(expected, 3, width), strings(actual.rows().get(3).values()));
+                int width = actual.rows().get(2).values().size();
+                assertEquals(goldenRow(expected, 3, width), strings(actual.rows().get(2).values()));
             }
             assertEquals(goldenData(golden.getSheet("03_메서드정의"), 4),
                     data(sheet(model, "03_메서드정의")).stream().map(JavaSpecMapperTest::strings).toList());
@@ -204,6 +224,19 @@ class JavaSpecMapperTest {
     }
 
     private static List<Object> cells(Object... values) { return Arrays.asList(values); }
+    private static String ownerName(String owner, JavaFacts facts) {
+        if (owner == null) {
+            return null;
+        }
+        int parameters = owner.indexOf('(');
+        if (parameters < 0) {
+            return owner;
+        }
+        String baseName = owner.substring(0, parameters);
+        long overloads = facts.methods().stream().filter(method -> method.name().equals(baseName)).count();
+        return overloads > 1 ? owner : baseName;
+    }
+
     private static boolean blank(Object value) { return value == null || value.equals(""); }
     private static List<String> strings(List<Object> values) {
         return values.stream().map(v -> v == null ? "" : v.toString()).toList();

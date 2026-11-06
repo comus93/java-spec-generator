@@ -41,11 +41,12 @@ public final class JspSpecMapper {
         }
         if (facts.screenFields().isEmpty()) fields.add(row(RowKind.DATA, null, null, null, null, null, null, null));
 
-        List<SheetRow> flows = start("JSP 화면 구성 흐름", "순번", "태그 / 파일", "속성");
-        for (var flow : facts.flows()) {
-            flows.add(row(RowKind.DATA, flow.sequence(), flow.tagOrFile(), attributes(flow.attributes())));
+        List<SheetRow> flows = start("JSP 화면 구성 순서", "순번", "태그 / 파일", "속성");
+        List<JspFacts.FlowFact> releaseFlows = releaseFlows(facts);
+        for (var flow : releaseFlows) {
+            flows.add(row(RowKind.DATA, flow.sequence(), flow.tagOrFile(), flowAttributes(flow)));
         }
-        if (facts.flows().isEmpty()) flows.add(row(RowKind.DATA, null, null, null));
+        if (releaseFlows.isEmpty()) flows.add(row(RowKind.DATA, null, null, null));
         List<SheetRow> path = start("원본 경로", "상대 경로");
         path.add(row(RowKind.DATA, job.relativePath().toString().replace('\\', '/')));
 
@@ -57,7 +58,7 @@ public final class JspSpecMapper {
         for (var constant : facts.constants()) {
             detail.add(row(RowKind.DATA, constant.name(), constant.type(), constant.description(), constant.note()));
         }
-        if (facts.constants().isEmpty()) detail.add(row(RowKind.DATA, null, null, null, null));
+        addBlankDataRows(detail, 5 - facts.constants().size(), 5);
         detail.add(row(RowKind.SECTION, "Function 및 Event"));
         detail.add(row(RowKind.HEADER, "Type", "Name", "설명", "Return"));
         for (var event : facts.events()) {
@@ -65,10 +66,10 @@ public final class JspSpecMapper {
             if ("LINK_CLICK".equals(event.type()) && description != null) description = "href=\"" + description + "\"";
             detail.add(row(RowKind.DATA, event.type(), event.name(), description, event.returnValue()));
         }
-        if (facts.events().isEmpty()) detail.add(row(RowKind.DATA, null, null, null, null));
+        addBlankDataRows(detail, 5 - facts.events().size(), 5);
         detail.add(row(RowKind.SECTION, "명세 변경 사항"));
         detail.add(row(RowKind.HEADER, "NO", "Source명", "Source Code", "개발자", "변경 내용"));
-        detail.add(row(RowKind.DATA, null, null, null, null, null));
+        addBlankDataRows(detail, 8, 5);
         return new WorkbookModel(List.of(new SheetModel("01_표제부", cover),
                 new SheetModel("02_화면필드정의", fields), new SheetModel("03_최소흐름", flows),
                 new SheetModel("04_원본경로", path), new SheetModel("상세 사양", detail)));
@@ -80,6 +81,48 @@ public final class JspSpecMapper {
             return Files.getLastModifiedTime(job.sourceFile()).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
         } catch (IOException | SecurityException ignored) {
             return null;
+        }
+    }
+
+    private static List<JspFacts.FlowFact> releaseFlows(JspFacts facts) {
+        List<JspFacts.FlowFact> result = new ArrayList<>();
+        for (JspFacts.FlowFact flow : facts.flows()) {
+            if (isScreenConstructionFlow(flow)) {
+                result.add(new JspFacts.FlowFact(result.size() + 1, flow.line(), flow.nodeKind(),
+                        flow.tagOrFile(), flow.attributes(), flow.depth()));
+            }
+        }
+        return result;
+    }
+
+    private static boolean isScreenConstructionFlow(JspFacts.FlowFact flow) {
+        if ("DIRECTIVE".equals(flow.nodeKind()) || "EL".equals(flow.nodeKind())) {
+            return true;
+        }
+        String tag = flow.tagOrFile();
+        if (tag == null || tag.isBlank()) {
+            return false;
+        }
+        if (tag.contains(":")) {
+            return true;
+        }
+        if ("a".equalsIgnoreCase(tag)) {
+            return flow.attributes().containsKey("href");
+        }
+        return "input".equalsIgnoreCase(tag)
+                && "submit".equalsIgnoreCase(flow.attributes().get("type"));
+    }
+
+    private static String flowAttributes(JspFacts.FlowFact flow) {
+        if ("DIRECTIVE".equals(flow.nodeKind()) || "EL".equals(flow.nodeKind())) {
+            return "";
+        }
+        return attributes(flow.attributes());
+    }
+
+    private static void addBlankDataRows(List<SheetRow> rows, int count, int width) {
+        for (int i = 0; i < Math.max(0, count); i++) {
+            rows.add(row(RowKind.DATA, java.util.Collections.nCopies(width, null).toArray()));
         }
     }
 

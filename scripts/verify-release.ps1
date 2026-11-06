@@ -3,8 +3,7 @@ param(
     [string]$JdkHome = 'C:\dev\jdk-21',
     [string]$MavenCmd = 'C:\dev\apache-maven-3.9.16\bin\mvn.cmd',
     [string]$Java17Home = $env:JAVA17_HOME,
-    [switch]$SkipPackage,
-    [switch]$SkipFullParity
+    [switch]$SkipPackage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -266,14 +265,12 @@ if (Test-Path -LiteralPath $appGui) {
 
 Add-Result 'Network isolation' 'BLOCKED' 'No OS-level network isolation was available in this session; runtime code contains no network API, but isolation is not proven.'
 
-if (-not $SkipFullParity) {
-    $parity = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-full-golden-parity.log') `
-        -Arguments @('-q', '-Dtest=GoldenSampleTest', '-Dspecgen.fullGoldenParity=true', 'test')
-    if ($parity.Code -eq 0) {
-        Add-Result 'Full Golden cell parity' 'PASS' 'Regenerated workbooks match every Golden cell.'
-    } else {
-        Add-Result 'Full Golden cell parity' 'FAIL' 'Regenerated workbooks differ from Golden; see target/release/maven-full-golden-parity.log.'
-    }
+$parity = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-full-golden-parity.log') `
+    -Arguments @('-q', '-Dtest=GoldenSampleTest', '-Dspecgen.fullGoldenParity=true', 'test')
+if ($parity.Code -eq 0) {
+    Add-Result 'Full Golden cell parity' 'PASS' 'Regenerated workbooks match every Golden cell.'
+} else {
+    Add-Result 'Full Golden cell parity' 'FAIL' 'Regenerated workbooks differ from Golden; see target/release/maven-full-golden-parity.log.'
 }
 
 $report = Join-Path $releaseDir 'verify-release.txt'

@@ -9,8 +9,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.comus93.specgen.config.JobConfig;
@@ -42,10 +44,14 @@ public final class JavaSpecMapper {
                 cells("09", "프로그램 유형", facts.typeKind()),
                 cells("10", "프로그램 개요", config.overview()))));
 
-        sheets.add(sheet("02_OBJ정의", "OBJ 정의 및 선언",
+        Set<String> overloadedMethods = facts.methods().stream()
+                .collect(Collectors.groupingBy(MethodFact::name, Collectors.counting()))
+                .entrySet().stream().filter(entry -> entry.getValue() > 1)
+                .map(entry -> entry.getKey()).collect(Collectors.toCollection(HashSet::new));
+        sheets.add(sheet("02_OBJ정의", "OBJ 선언 · 정의",
                 cells("선언 종류", "OBJ명", "선언 타입", "수식어", "수명", "초기화 원문", "소속"),
                 facts.variables().stream().map(v -> cells(v.kind(), v.name(), v.type(), v.modifiers(),
-                        v.lifetime(), v.initializer(), v.owner())).toList()));
+                        v.lifetime(), v.initializer(), ownerName(v.owner(), overloadedMethods))).toList()));
 
         // Golden lists methods by name; stable sorting retains source order for overloads.
         List<MethodFact> methods = facts.methods().stream()
@@ -90,6 +96,18 @@ public final class JavaSpecMapper {
         return new WorkbookModel(sheets);
     }
 
+    private static String ownerName(String owner, Set<String> overloadedMethods) {
+        if (owner == null) {
+            return null;
+        }
+        int parameters = owner.indexOf('(');
+        if (parameters < 0) {
+            return owner;
+        }
+        String baseName = owner.substring(0, parameters);
+        return overloadedMethods.contains(baseName) ? owner : baseName;
+    }
+
     private static LocalDate authoringDate(JobConfig config, Path source) {
         if (config.authoringDateOverride() != null) return config.authoringDateOverride();
         try {
@@ -117,7 +135,6 @@ public final class JavaSpecMapper {
     private static SheetModel sheet(String name, String title, List<Object> headers, List<List<Object>> data) {
         List<SheetRow> rows = new ArrayList<>();
         rows.add(new SheetRow(RowKind.TITLE, cells(title)));
-        rows.add(new SheetRow(RowKind.EMPTY, List.of()));
         rows.add(new SheetRow(RowKind.EMPTY, List.of()));
         rows.add(new SheetRow(RowKind.HEADER, headers));
         if (data.isEmpty()) {
