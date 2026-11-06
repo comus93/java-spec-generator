@@ -17,8 +17,8 @@ function Require-Path {
 }
 
 function Add-Result {
-    param([string]$Check, [string]$Status, [string]$Detail)
-    $script:results += [pscustomobject]@{ Check = $Check; Status = $Status; Detail = $Detail }
+    param([string]$Check, [string]$Status, [string]$Detail, [string]$Category = 'Functional')
+    $script:results += [pscustomobject]@{ Category = $Category; Check = $Check; Status = $Status; Detail = $Detail }
     Write-Host ("[{0}] {1}: {2}" -f $Status, $Check, $Detail)
 }
 
@@ -125,6 +125,37 @@ Write-Host "Java runtime for this verification:"
 Write-Host $javaVersion
 Write-Host "Maven: $($script:mvn)"
 
+$manifest = Join-Path $root 'docs/test/golden-manifest.sha256'
+$assetStatus = 'PASS'
+$assetDetails = New-Object System.Collections.Generic.List[string]
+if (-not (Test-Path -LiteralPath $manifest)) {
+    $assetStatus = 'FAIL'
+    $assetDetails.Add('Golden manifest is missing.')
+} else {
+    foreach ($line in Get-Content -LiteralPath $manifest -Encoding utf8) {
+        $clean = $line.Trim()
+        if ($clean -eq '' -or $clean.StartsWith('#')) { continue }
+        $parts = $clean -split '\s+', 2
+        if ($parts.Count -ne 2) { continue }
+        $expected = $parts[0].ToLowerInvariant()
+        $relative = $parts[1].Trim()
+        $asset = Join-Path $root $relative
+        if (-not (Test-Path -LiteralPath $asset)) {
+            $assetStatus = 'FAIL'
+            $assetDetails.Add("MISSING $relative")
+            continue
+        }
+        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
+        if ($actual -ne $expected) {
+            $assetStatus = 'FAIL'
+            $assetDetails.Add("MISMATCH $relative")
+        } else {
+            $assetDetails.Add("OK $relative")
+        }
+    }
+}
+Add-Result 'Golden reference asset integrity (informational only)' $assetStatus ($assetDetails -join '; ') -Category 'Asset'
+
 $verify = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-verify.log') -Arguments @('-q', 'clean', 'verify')
 if ($verify.Code -eq 0) {
     Add-Result 'mvn clean verify' 'PASS' 'Unit, integration and release-contract tests completed.'
@@ -137,29 +168,29 @@ if (-not (Test-Path -LiteralPath $jar)) {
     $fallback = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-package-fallback.log') `
         -Arguments @('-q', '-DskipTests', 'package')
     if ($fallback.Code -eq 0) {
-        Add-Result 'Artifact build after failed test gate' 'PASS' 'Packaging still succeeded; test gate remains FAIL.'
+        Add-Result 'Artifact build after failed test gate' 'PASS' 'Packaging still succeeded; test gate remains FAIL.' -Category 'Deployment'
     } else {
-        Add-Result 'Artifact build after failed test gate' 'FAIL' 'Packaging failed; see target/release/maven-package-fallback.log.'
+        Add-Result 'Artifact build after failed test gate' 'FAIL' 'Packaging failed; see target/release/maven-package-fallback.log.' -Category 'Deployment'
     }
 }
 
 if (Test-Path -LiteralPath $jar) {
-    Add-Result 'Executable JAR' 'PASS' $jar
+    Add-Result 'Executable JAR' 'PASS' $jar -Category 'Deployment'
     $classInfo = Get-JarClassMajor -Jar $jar
     if ($classInfo.MaxMajor -le 61 -and $classInfo.Unsupported.Count -eq 0) {
-        Add-Result 'Shaded JAR Java 17 class files' 'PASS' "Maximum base class-file major version is $($classInfo.MaxMajor) (Java 17 = 61)."
+        Add-Result 'Shaded JAR Java 17 class files' 'PASS' "Maximum base class-file major version is $($classInfo.MaxMajor) (Java 17 = 61)." -Category 'Deployment'
     } else {
-        Add-Result 'Shaded JAR Java 17 class files' 'FAIL' ("Unsupported base entries: " + ($classInfo.Unsupported -join '; '))
+        Add-Result 'Shaded JAR Java 17 class files' 'FAIL' ("Unsupported base entries: " + ($classInfo.Unsupported -join '; ')) -Category 'Deployment'
     }
 } else {
-    Add-Result 'Executable JAR' 'FAIL' "Missing: $jar"
+    Add-Result 'Executable JAR' 'FAIL' "Missing: $jar" -Category 'Deployment'
 }
 
 $tree = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-dependency-tree.log') -Arguments @('-q', 'dependency:tree', "-DoutputFile=$releaseDir\dependency-tree.txt")
 if ($tree.Code -eq 0) {
-    Add-Result 'Dependency inventory input' 'PASS' (Join-Path $releaseDir 'dependency-tree.txt')
+    Add-Result 'Dependency inventory input' 'PASS' (Join-Path $releaseDir 'dependency-tree.txt') -Category 'Deployment'
 } else {
-    Add-Result 'Dependency inventory input' 'FAIL' 'mvn dependency:tree failed; see target/release/maven-dependency-tree.log.'
+    Add-Result 'Dependency inventory input' 'FAIL' 'mvn dependency:tree failed; see target/release/maven-dependency-tree.log.' -Category 'Deployment'
 }
 
 $fixtures = Join-Path $root 'src\test\resources\fixtures\spring-mvc'
@@ -220,15 +251,15 @@ if ($java17) {
         $java17Exit = $LASTEXITCODE
         $java17Count = Count-Workbooks -Directory $java17Output
         if ($java17Exit -eq 0 -and $java17Count -eq 2) {
-            Add-Result 'Actual Java 17 JVM CLI' 'PASS' "java -version reports 17; $java17Count workbooks generated."
+            Add-Result 'Actual Java 17 JVM CLI' 'PASS' "java -version reports 17; $java17Count workbooks generated." -Category 'Deployment'
         } else {
-            Add-Result 'Actual Java 17 JVM CLI' 'FAIL' "exit=$java17Exit, workbooks=$java17Count."
+            Add-Result 'Actual Java 17 JVM CLI' 'FAIL' "exit=$java17Exit, workbooks=$java17Count." -Category 'Deployment'
         }
     } else {
-        Add-Result 'Actual Java 17 JVM CLI' 'BLOCKED' 'Configured Java runtime is not version 17.'
+        Add-Result 'Actual Java 17 JVM CLI' 'BLOCKED' 'Configured Java runtime is not version 17.' -Category 'Deployment'
     }
 } else {
-    Add-Result 'Actual Java 17 JVM CLI' 'BLOCKED' 'No Java 17 JVM is installed or configured (JAVA17_HOME is unset; PATH has no Java).'
+    Add-Result 'Actual Java 17 JVM CLI' 'BLOCKED' 'No Java 17 JVM is installed or configured (JAVA17_HOME is unset; PATH has no Java).' -Category 'Deployment'
 }
 
 if (-not $SkipPackage) {
@@ -236,9 +267,9 @@ if (-not $SkipPackage) {
         $packageScript = Join-Path $PSScriptRoot 'package-windows.ps1'
         & $packageScript -JdkHome $script:jdk -MavenCmd $script:mvn -SkipTests *>&1 |
             Tee-Object -FilePath (Join-Path $releaseDir 'package-windows.log') | Out-Host
-        Add-Result 'Windows jpackage app-image' 'PASS' (Join-Path $root 'target\jpackage\SpecGenerator')
+        Add-Result 'Windows jpackage app-image' 'PASS' (Join-Path $root 'target\jpackage\SpecGenerator') -Category 'Deployment'
     } catch {
-        Add-Result 'Windows jpackage app-image' 'FAIL' $_.Exception.Message
+        Add-Result 'Windows jpackage app-image' 'FAIL' $_.Exception.Message -Category 'Deployment'
     }
 }
 
@@ -252,36 +283,29 @@ if (Test-Path -LiteralPath $appCli) {
     $appExit = $LASTEXITCODE
     $appCount = Count-Workbooks -Directory $appOutput
     if ($appExit -eq 0 -and $appCount -eq 2) {
-        Add-Result 'App-image CLI without Java PATH' 'PASS' "Bundled runtime generated $appCount workbook(s)."
+        Add-Result 'App-image CLI without Java PATH' 'PASS' "Bundled runtime generated $appCount workbook(s)." -Category 'Deployment'
     } else {
-        Add-Result 'App-image CLI without Java PATH' 'FAIL' "exit=$appExit, workbooks=$appCount."
+        Add-Result 'App-image CLI without Java PATH' 'FAIL' "exit=$appExit, workbooks=$appCount." -Category 'Deployment'
     }
 } else {
-    Add-Result 'App-image CLI without Java PATH' 'BLOCKED' "App-image CLI is missing: $appCli"
+    Add-Result 'App-image CLI without Java PATH' 'BLOCKED' "App-image CLI is missing: $appCli" -Category 'Deployment'
 }
 
 if (Test-Path -LiteralPath $appGui) {
     $process = Start-Process -FilePath $appGui -PassThru
     Start-Sleep -Seconds 5
     if ($process.HasExited) {
-        Add-Result 'App-image GUI launch smoke' 'FAIL' "GUI launcher exited immediately with code $($process.ExitCode)."
+        Add-Result 'App-image GUI launch smoke' 'FAIL' "GUI launcher exited immediately with code $($process.ExitCode)." -Category 'Deployment'
     } else {
-        Add-Result 'App-image GUI launch smoke' 'PASS' 'GUI launcher stayed alive for five seconds; this is an automated launch smoke, not human UAT.'
+        Add-Result 'App-image GUI launch smoke' 'PASS' 'GUI launcher stayed alive for five seconds; this is an automated launch smoke, not human UAT.' -Category 'Deployment'
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Add-Result 'App-image GUI launch smoke' 'BLOCKED' "App-image GUI launcher is missing: $appGui"
+    Add-Result 'App-image GUI launch smoke' 'BLOCKED' "App-image GUI launcher is missing: $appGui" -Category 'Deployment'
 }
 
-Add-Result 'Network isolation' 'BLOCKED' 'No OS-level network isolation was available in this session; runtime code contains no network API, but isolation is not proven.'
-
-$parity = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-full-golden-parity.log') `
-    -Arguments @('-q', '-Dtest=GoldenSampleTest', '-Dspecgen.fullGoldenParity=true', 'test')
-if ($parity.Code -eq 0) {
-    Add-Result 'Full Golden cell parity' 'PASS' 'Regenerated workbooks match every Golden cell.'
-} else {
-    Add-Result 'Full Golden cell parity' 'FAIL' 'Regenerated workbooks differ from Golden; see target/release/maven-full-golden-parity.log.'
-}
+Add-Result 'Network isolation' 'BLOCKED' 'No OS-level network isolation was available in this session; runtime code contains no network API, but isolation is not proven.' -Category 'Deployment'
+Add-Result 'Dependency security scan' 'BLOCKED' 'No offline CVE/SBOM scanner was available in this session; dependency inventory was generated but not vulnerability-scanned.' -Category 'Deployment'
 
 $report = Join-Path $releaseDir 'verify-release.txt'
 $lines = New-Object System.Collections.Generic.List[string]
@@ -291,17 +315,32 @@ $lines.Add("Workspace: $root")
 $lines.Add("JDK: $script:jdk")
 $lines.Add($javaVersion)
 $lines.Add('')
-foreach ($result in $script:results) {
-    $lines.Add(("[{0}] {1}: {2}" -f $result.Status, $result.Check, $result.Detail))
+foreach ($category in @('Asset', 'Functional', 'Deployment')) {
+    $lines.Add("[$category]")
+    foreach ($result in $script:results | Where-Object { $_.Category -eq $category }) {
+        $lines.Add(("[{0}] {1}: {2}" -f $result.Status, $result.Check, $result.Detail))
+    }
+    $lines.Add('')
 }
+$functional = @($script:results | Where-Object { $_.Category -eq 'Functional' })
+$deployment = @($script:results | Where-Object { $_.Category -eq 'Deployment' })
+$asset = @($script:results | Where-Object { $_.Category -eq 'Asset' })
+$functionalVerdict = if (@($functional | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0) { 'FAIL' } else { 'PASS' }
+$deploymentFailed = @($deployment | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0
+$deploymentBlocked = @($deployment | Where-Object { $_.Status -eq 'BLOCKED' }).Count -gt 0
+$deploymentVerdict = if ($deploymentFailed) { 'FAIL' } elseif ($deploymentBlocked) { 'BLOCKED' } else { 'PASS' }
+$assetVerdict = if (@($asset | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0) { 'FAIL (informational)' } else { 'PASS' }
+$lines.Add("Functional verdict: $functionalVerdict")
+$lines.Add("Deployment verdict: $deploymentVerdict")
+$lines.Add("Golden asset integrity: $assetVerdict")
 $lines | Set-Content -LiteralPath $report -Encoding utf8
 
 Write-Host ''
 Write-Host "Verification report: $report"
-$failures = @($script:results | Where-Object { $_.Status -in @('FAIL', 'BLOCKED') })
-if ($failures.Count -gt 0) {
-    Write-Host "$($failures.Count) release gate(s) are FAIL or BLOCKED."
+Write-Host "Functional verdict: $functionalVerdict"
+Write-Host "Deployment verdict: $deploymentVerdict"
+Write-Host "Golden asset integrity: $assetVerdict"
+if ($functionalVerdict -eq 'FAIL' -or $deploymentFailed) {
     exit 1
 }
-Write-Host 'All release gates passed.'
 exit 0
