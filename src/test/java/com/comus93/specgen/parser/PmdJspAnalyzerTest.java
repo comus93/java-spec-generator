@@ -2,6 +2,8 @@ package com.comus93.specgen.parser;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -110,12 +112,105 @@ class PmdJspAnalyzerTest {
     }
 
     @Test
+    void preservesNestedFormControlsMessagesAndSubmitInsideTableCells() throws Exception {
+        JspFacts facts = analyzer.analyze(customJsp("nested-controls.jsp",
+                "<table><thead><tr><th>Column</th></tr></thead><tbody><tr><td>"
+                        + "<form:form commandName=\"todo\">"
+                        + "<form:label path=\"name\">Name</form:label>"
+                        + "<form:input path=\"name\"/>"
+                        + "<spring:message code=\"caption\"/>"
+                        + "<input type=\"submit\" value=\"Save\"/>"
+                        + "</form:form></td></tr></tbody></table>"));
+
+        assertEquals(List.of("Name", "<spring:message>", "Save"),
+                facts.screenFields().stream().map(ScreenFieldFact::fieldName).toList());
+        assertEquals("name", field(facts, "Name").referenceField());
+        assertEquals("todo", field(facts, "Save").object());
+    }
+
+    @Test
+    void preservesPlainInputSelectAndTextareaControls() throws Exception {
+        JspFacts facts = analyzer.analyze(customJsp("plain-controls.jsp",
+                "<input name=\"plainText\" type=\"text\"/>"
+                        + "<select name=\"plainSelect\"><option>A</option></select>"
+                        + "<textarea name=\"plainArea\"></textarea>"));
+
+        assertEquals(List.of("plainText", "plainSelect", "plainArea"),
+                facts.screenFields().stream().map(ScreenFieldFact::fieldName).toList());
+        assertEquals("text", field(facts, "plainText").fieldType());
+        assertEquals("select", field(facts, "plainSelect").fieldType());
+        assertEquals("textarea", field(facts, "plainArea").fieldType());
+    }
+
+    @Test
+    void keepsBlankHeaderPositionsAndIsolatesNestedTables() throws Exception {
+        JspFacts facts = analyzer.analyze(customJsp("nested-table.jsp",
+                "<table><thead><tr><th>A</th><th></th></tr></thead><tbody>"
+                        + "<tr><td>${one}</td><td>${two}</td></tr>"
+                        + "<tr><td><table><thead><tr><th>Inner</th></tr></thead><tbody>"
+                        + "<tr><td>${inner}</td></tr></tbody></table></td><td></td></tr>"
+                        + "</tbody></table>"));
+
+        assertEquals(List.of("A", "${two}", "Inner"),
+                facts.screenFields().stream().map(ScreenFieldFact::fieldName).toList());
+        assertEquals("${two}", field(facts, "${two}").referenceField());
+        assertEquals("${inner}", field(facts, "Inner").referenceField());
+        assertTrue(facts.screenFields().stream()
+                .noneMatch(field -> "A".equals(field.fieldName())
+                        && "${inner}".equals(field.referenceField())));
+    }
+
+    @Test
+    void scopesFormLabelsToTheirOwnFormAndAvoidsAmbiguousPairing() throws Exception {
+        JspFacts facts = analyzer.analyze(customJsp("form-labels.jsp",
+                "<form:form commandName=\"first\">"
+                        + "<form:label path=\"name\">First Name</form:label>"
+                        + "<form:input path=\"name\"/>"
+                        + "</form:form>"
+                        + "<form:form commandName=\"second\">"
+                        + "<form:input path=\"name\"/>"
+                        + "<form:label path=\"name\">Second Name</form:label>"
+                        + "<form:input path=\"name\"/>"
+                        + "</form:form>"
+                        + "<form:form commandName=\"ambiguous\">"
+                        + "<form:label path=\"value\">One</form:label>"
+                        + "<form:label path=\"value\">Two</form:label>"
+                        + "<form:input path=\"value\"/>"
+                        + "</form:form>"));
+
+        assertEquals(List.of("First Name", "name", "Second Name", "value"),
+                facts.screenFields().stream().map(ScreenFieldFact::fieldName).toList());
+    }
+
+    @Test
+    void preservesOriginalRawAttributeText() throws Exception {
+        JspFacts facts = analyzer.analyze(customJsp("raw-attributes.jsp",
+                "<form:input path='single' data-x=\"double\" disabled />"
+                        + "<a href='/go?id=${x}'>Go</a>"));
+
+        ScreenFieldFact input = field(facts, "single");
+        assertEquals("path='single'", input.rawAttributeText().get("path"));
+        assertEquals("data-x=\"double\"", input.rawAttributeText().get("data-x"));
+        assertEquals("disabled", input.rawAttributeText().get("disabled"));
+
+        ScreenFieldFact link = field(facts, "Go");
+        assertEquals("href='/go?id=${x}'", link.rawAttributeText().get("href"));
+        assertEquals("/go?id=${x}", facts.events().get(0).description());
+    }
+
+    @Test
     void reportsFileReadFailureWithoutSwallowingIt() {
         Path missing = tempDir.resolve("missing.jsp");
         SourceAnalysisException error = assertThrows(SourceAnalysisException.class,
                 () -> analyzer.analyze(missing));
         assertEquals(missing, error.sourceFile());
         assertEquals(SourceAnalysisException.READ_ERROR, error.errorCode());
+    }
+
+    private Path customJsp(String name, String content) throws Exception {
+        Path path = tempDir.resolve(name);
+        Files.writeString(path, content, StandardCharsets.UTF_8);
+        return path;
     }
 
     private static ScreenFieldFact field(JspFacts facts, String fieldName) {

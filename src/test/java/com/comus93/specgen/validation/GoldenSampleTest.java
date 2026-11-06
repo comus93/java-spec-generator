@@ -209,6 +209,7 @@ class GoldenSampleTest {
                 assertNotNull(source.getRow(0), "Physical title row must exist on " + expected.getSheetName());
             }
             assertPhysicalRow(expected, source, 1, width, "blank spacer");
+            assertPhysicalRow(expected, source, 2, width, "visual spacer");
             boolean lastSheet = index == golden.getNumberOfSheets() - 1;
             int headerIndex = lastSheet && testCase.mode() == SourceMode.JSP ? 4 : 3;
             assertPhysicalRow(expected, source, headerIndex, width, "header");
@@ -259,11 +260,27 @@ class GoldenSampleTest {
                 assertJspLinks(actualDetail);
             }
         } else {
+            for (int index = 1; index < golden.getNumberOfSheets() - 1; index++) {
+                if (index == pathIndex) {
+                    continue;
+                }
+                Sheet expected = golden.getSheetAt(index);
+                Sheet source = actual.getSheetAt(index);
+                int width = maxWidth(expected);
+                if (index == 4 || index == 5) {
+                    assertSameMultiset(expected, source, 4, width);
+                } else {
+                    for (int row = 4; row <= lastNonEmptyRow(expected, width); row++) {
+                        assertPhysicalRow(expected, source, row, width, "Java core data");
+                    }
+                }
+            }
+
             Sheet expectedDetail = golden.getSheetAt(golden.getNumberOfSheets() - 1);
             Sheet actualDetail = actual.getSheetAt(actual.getNumberOfSheets() - 1);
             int detailWidth = maxWidth(expectedDetail);
-            for (int row = 0; row <= 3; row++) {
-                assertPhysicalRow(expectedDetail, actualDetail, row, detailWidth, "detail header");
+            for (int row = 0; row <= lastNonEmptyRow(expectedDetail, detailWidth); row++) {
+                assertPhysicalRow(expectedDetail, actualDetail, row, detailWidth, "Java detail");
             }
             for (int row = 4; row <= actualDetail.getLastRowNum(); row++) {
                 String value = rowValues(actualDetail, row, detailWidth).get(4);
@@ -286,29 +303,34 @@ class GoldenSampleTest {
                 "Flow sequence differs at physical row " + (row + 1));
         assertEquals(expectedValues.get(1), actualValues.get(1),
                 "Flow tag/file differs at physical row " + (row + 1));
-        assertEquals(attributeMap(expectedValues.get(2)), attributeMap(actualValues.get(2)),
-                "Flow attributes differ at physical row " + (row + 1));
+        assertEquals(expectedValues.get(2), actualValues.get(2),
+                "Flow raw attributes differ at physical row " + (row + 1));
     }
 
-    private static Map<String, String> attributeMap(String text) {
-        Map<String, String> result = new TreeMap<>();
-        if (text == null || text.isBlank()) {
-            return result;
-        }
-        for (String part : text.split(";")) {
-            String entry = part.trim();
-            if (entry.isEmpty()) {
-                continue;
+    private static void assertSameMultiset(Sheet expected, Sheet actual, int firstRow, int width) {
+        List<String> expectedRows = dataRows(expected, firstRow, width);
+        List<String> actualRows = dataRows(actual, firstRow, width);
+        assertEquals(counts(expectedRows), counts(actualRows),
+                "Java core data rows differ from Golden on " + expected.getSheetName());
+    }
+
+    private static List<String> dataRows(Sheet sheet, int firstRow, int width) {
+        List<String> rows = new ArrayList<>();
+        for (int row = firstRow; row <= lastNonEmptyRow(sheet, width); row++) {
+            List<String> values = rowValues(sheet, row, width);
+            if (values.stream().anyMatch(value -> !value.isEmpty())) {
+                rows.add(String.join("\u0001", values));
             }
-            int separator = entry.indexOf('=');
-            String key = separator < 0 ? entry : entry.substring(0, separator).trim();
-            String value = separator < 0 ? "" : entry.substring(separator + 1).trim();
-            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-                value = value.substring(1, value.length() - 1);
-            }
-            result.put(key, value);
         }
-        return result;
+        return rows;
+    }
+
+    private static Map<String, Integer> counts(List<String> rows) {
+        Map<String, Integer> counts = new TreeMap<>();
+        for (String row : rows) {
+            counts.merge(row, 1, Integer::sum);
+        }
+        return counts;
     }
 
     private static int lastNonEmptyRow(Sheet sheet, int width) {

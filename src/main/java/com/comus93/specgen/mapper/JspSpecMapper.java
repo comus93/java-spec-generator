@@ -36,8 +36,10 @@ public final class JspSpecMapper {
         List<SheetRow> fields = start("화면 필드 정의", "화면 필드", "Object", "참조 필드", "Edit",
                 "Remark (속성 원문)", "항목 유형", "다국어 ID");
         for (var field : facts.screenFields()) {
+            String attributes = field.rawAttributeText().isEmpty()
+                    ? attributes(field.rawAttributes()) : rawAttributes(field.rawAttributeText());
             fields.add(row(RowKind.DATA, field.fieldName(), field.object(), field.referenceField(), null,
-                    attributes(field.rawAttributes()), field.fieldType(), field.i18nId()));
+                    attributes, field.fieldType(), field.i18nId()));
         }
         if (facts.screenFields().isEmpty()) fields.add(row(RowKind.DATA, null, null, null, null, null, null, null));
 
@@ -58,7 +60,7 @@ public final class JspSpecMapper {
         for (var constant : facts.constants()) {
             detail.add(row(RowKind.DATA, constant.name(), constant.type(), constant.description(), constant.note()));
         }
-        addBlankDataRows(detail, 5 - facts.constants().size(), 5);
+        if (facts.constants().isEmpty()) detail.add(row(RowKind.DATA, null, null, null, null));
         detail.add(row(RowKind.SECTION, "Function 및 Event"));
         detail.add(row(RowKind.HEADER, "Type", "Name", "설명", "Return"));
         for (var event : facts.events()) {
@@ -66,10 +68,10 @@ public final class JspSpecMapper {
             if ("LINK_CLICK".equals(event.type()) && description != null) description = "href=\"" + description + "\"";
             detail.add(row(RowKind.DATA, event.type(), event.name(), description, event.returnValue()));
         }
-        addBlankDataRows(detail, 5 - facts.events().size(), 5);
+        if (facts.events().isEmpty()) detail.add(row(RowKind.DATA, null, null, null, null));
         detail.add(row(RowKind.SECTION, "명세 변경 사항"));
         detail.add(row(RowKind.HEADER, "NO", "Source명", "Source Code", "개발자", "변경 내용"));
-        addBlankDataRows(detail, 8, 5);
+        detail.add(row(RowKind.DATA, null, null, null, null, null));
         return new WorkbookModel(List.of(new SheetModel("01_표제부", cover),
                 new SheetModel("02_화면필드정의", fields), new SheetModel("03_최소흐름", flows),
                 new SheetModel("04_원본경로", path), new SheetModel("상세 사양", detail)));
@@ -89,7 +91,7 @@ public final class JspSpecMapper {
         for (JspFacts.FlowFact flow : facts.flows()) {
             if (isScreenConstructionFlow(flow)) {
                 result.add(new JspFacts.FlowFact(result.size() + 1, flow.line(), flow.nodeKind(),
-                        flow.tagOrFile(), flow.attributes(), flow.depth()));
+                        flow.tagOrFile(), flow.attributes(), flow.rawAttributeText(), flow.depth()));
             }
         }
         return result;
@@ -117,13 +119,12 @@ public final class JspSpecMapper {
         if ("DIRECTIVE".equals(flow.nodeKind()) || "EL".equals(flow.nodeKind())) {
             return "";
         }
-        return attributes(flow.attributes());
+        return flow.rawAttributeText().isEmpty()
+                ? attributes(flow.attributes()) : rawAttributes(flow.rawAttributeText());
     }
 
-    private static void addBlankDataRows(List<SheetRow> rows, int count, int width) {
-        for (int i = 0; i < Math.max(0, count); i++) {
-            rows.add(row(RowKind.DATA, java.util.Collections.nCopies(width, null).toArray()));
-        }
+    private static String rawAttributes(Map<String, String> attrs) {
+        return String.join("; ", attrs.values());
     }
 
     private static String attributes(Map<String, String> attrs) {

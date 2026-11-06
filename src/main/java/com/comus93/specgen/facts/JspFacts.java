@@ -29,12 +29,19 @@ public record JspFacts(
             String referenceField,
             Boolean editable,
             Map<String, String> rawAttributes,
+            Map<String, String> rawAttributeText,
             String fieldType,
             String i18nId,
             int line) {
 
         public ScreenFieldFact {
             rawAttributes = immutableAttributes(rawAttributes);
+            rawAttributeText = immutableAttributes(rawAttributeText);
+        }
+
+        public ScreenFieldFact(String fieldName, String object, String referenceField, Boolean editable,
+                Map<String, String> rawAttributes, String fieldType, String i18nId, int line) {
+            this(fieldName, object, referenceField, editable, rawAttributes, Map.of(), fieldType, i18nId, line);
         }
     }
 
@@ -44,10 +51,17 @@ public record JspFacts(
             String nodeKind,
             String tagOrFile,
             Map<String, String> attributes,
+            Map<String, String> rawAttributeText,
             int depth) {
 
         public FlowFact {
             attributes = immutableAttributes(attributes);
+            rawAttributeText = immutableAttributes(rawAttributeText);
+        }
+
+        public FlowFact(int sequence, int line, String nodeKind, String tagOrFile,
+                Map<String, String> attributes, int depth) {
+            this(sequence, line, nodeKind, tagOrFile, attributes, Map.of(), depth);
         }
     }
 

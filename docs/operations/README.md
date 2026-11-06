@@ -111,8 +111,9 @@ $env:PATH = "C:\dev\jdk-21\bin;C:\dev\apache-maven-3.9.16\bin;$env:PATH"
 
 | Gate | Result | Evidence |
 |---|---|---|
-| Unit/integration/release-contract tests | PASS | `mvn clean verify` exited 0; the default Golden gate checks physical rows, core values and styles against Golden. |
-| Shaded executable JAR | PASS | `target/spec-generator.jar`, 32,555,439 bytes at verification time. |
+| Unit/integration/release-contract tests | FAIL | `mvn clean verify` exited 1. Focused parser/mapper tests pass, but the default Golden gate now honestly checks physical blank row 3, Java core data and raw attributes against Golden. |
+| Artifact build after failed test gate | PASS | `mvn -DskipTests package` succeeded; this validates packaging, not release readiness. |
+| Shaded executable JAR | PASS | `target/spec-generator.jar`, 32,557,350 bytes at verification time. |
 | Java 17 class-file compatibility | PASS (static) | Maximum base class-file major version 61; multi-release entries excluded from base check. |
 | CLI on JDK 21 | PASS | 2 Java and 2 JSP fixtures generated, exit 0. |
 | Repeated overwrite | PASS | Second run succeeded; no `.specgen-*` temporary files remained. |
@@ -121,26 +122,29 @@ $env:PATH = "C:\dev\jdk-21\bin;C:\dev\apache-maven-3.9.16\bin;$env:PATH"
 | App-image GUI launch smoke | PASS (smoke only) | Launcher process stayed alive for 5 seconds. This is **not human UAT**. |
 | Actual Java 17 JVM | BLOCKED | No Java 17 JVM installed/configured (`JAVA17_HOME` unset; PATH has no Java). |
 | Network isolation | BLOCKED | No OS-level network isolation available in the verification session. |
-| Full Golden cell parity | FAIL | Required release audit reported 141 remaining cell differences that have no general source-grounded mapping. See `target/release/maven-full-golden-parity.log`. |
+| Full Golden cell parity | FAIL | Required release audit reported 159 remaining cell differences. See `target/release/maven-full-golden-parity.log`. |
 | Vulnerability scan | BLOCKED | No offline CVE/SBOM scanner available. |
 
 ### Remaining Golden differences (release blocker)
 
-The default release gate now checks physical title/header/data positions, core Golden values,
-source paths, detail structure, grayscale styling and the cover D:F band. Regenerated output still
-differs from Golden in these areas:
+The default release gate now checks physical blank row 3, core data rows, paths, raw attribute
+text, detail structure, grayscale styling and the cover D:F band. It fails honestly on these
+remaining differences:
 
-- Java `05_호출관계` and `06_타입정보` use deterministic source order. The Golden samples use a
-  different, non-spec ordering; no general reordering rule is justified.
+- Java step/detail rows keep the complete source snippet; Golden truncates one long loop snippet
+  with `...`; no truncation length is defined by the spec.
 - Java `06_정적초기화` preserves both a static field initializer and static-block initializers,
   while Golden omits the field initializer; the spec does not define dropping that fact.
-- Java detail/step rows keep the full source snippet; Golden truncates one long loop snippet with
-  `...`; truncation length is not defined by the spec.
+- Java `05_호출관계` and `06_타입정보` use deterministic source order. Golden uses a different,
+  non-spec ordering; the gate checks these two sheets as row multisets rather than asserting an
+  arbitrary order.
 - Java `05`/`06`/`07` Golden title rows are blank while the regenerated workbook has descriptive
   titles.
-- JSP `03_화면구성` uses consistent quoted attribute text. Golden uses unquoted attributes for
-  Spring form/input tags and quoted attributes for other tags; that mixed presentation has no
+- JSP `03_화면구성` preserves the original attribute source text. Golden uses unquoted attributes
+  for Spring form/input tags and quoted attributes for other tags; that mixed presentation has no
   general source-grounded rule.
+- JSP detail section spacing differs because fixed padding rows were removed as unsupported by the
+  spec.
 
 Task 12 did not modify Golden files or the manifest, and did not claim a release PASS. The
 candidate is **not release-ready** until these differences, actual Java 17 execution,

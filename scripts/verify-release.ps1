@@ -133,6 +133,16 @@ if ($verify.Code -eq 0) {
 }
 
 $jar = Join-Path $root 'target\spec-generator.jar'
+if (-not (Test-Path -LiteralPath $jar)) {
+    $fallback = Invoke-MavenLogged -Log (Join-Path $releaseDir 'maven-package-fallback.log') `
+        -Arguments @('-q', '-DskipTests', 'package')
+    if ($fallback.Code -eq 0) {
+        Add-Result 'Artifact build after failed test gate' 'PASS' 'Packaging still succeeded; test gate remains FAIL.'
+    } else {
+        Add-Result 'Artifact build after failed test gate' 'FAIL' 'Packaging failed; see target/release/maven-package-fallback.log.'
+    }
+}
+
 if (Test-Path -LiteralPath $jar) {
     Add-Result 'Executable JAR' 'PASS' $jar
     $classInfo = Get-JarClassMajor -Jar $jar

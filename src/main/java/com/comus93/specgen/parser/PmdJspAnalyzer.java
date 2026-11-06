@@ -78,7 +78,8 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
         private final List<FlowFact> flows = new ArrayList<>();
         private final List<EventFact> events = new ArrayList<>();
         private final Deque<TableState> tables = new ArrayDeque<>();
-        private final Map<String, String> formLabels = new LinkedHashMap<>();
+        private final Map<ASTElement, Map<String, String>> formLabels = new IdentityHashMap<>();
+        private final Map<ASTElement, Set<String>> ambiguousFormLabels = new IdentityHashMap<>();
         private final Set<ASTElement> loopsWithElField =
                 Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -88,21 +89,29 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             if (node instanceof ASTElement element) {
                 String tag = element.getName();
                 Map<String, String> attributes = elementAttributes(element);
+                Map<String, String> rawAttributes = elementRawAttributes(element);
                 if ("table".equalsIgnoreCase(tag)) {
                     tables.push(new TableState());
-                }
-                if ("th".equalsIgnoreCase(tag) && !tables.isEmpty()) {
-                    String label = visibleText(element);
-                    if (!label.isBlank()) {
-                        tables.peek().headers.add(label);
+                } else if ("thead".equalsIgnoreCase(tag) && !tables.isEmpty()) {
+                    tables.peek().inHead = true;
+                } else if (("tbody".equalsIgnoreCase(tag) || "tfoot".equalsIgnoreCase(tag))
+                        && !tables.isEmpty()) {
+                    tables.peek().inHead = false;
+                } else if ("tr".equalsIgnoreCase(tag) && !tables.isEmpty()) {
+                    TableState table = tables.peek();
+                    table.cellIndex = 0;
+                    table.capturingHeader = table.inHead && !table.headerStarted;
+                    if (table.capturingHeader) {
+                        table.headerStarted = true;
                     }
-                }
-                if ("tr".equalsIgnoreCase(tag) && !tables.isEmpty()) {
-                    tables.peek().cellIndex = 0;
+                } else if ("th".equalsIgnoreCase(tag) && !tables.isEmpty()
+                        && tables.peek().capturingHeader) {
+                    // Keep blank positions: column indexes must mirror the real table.
+                    tables.peek().headers.add(visibleText(element));
                 }
 
                 flows.add(new FlowFact(flows.size() + 1, element.getBeginLine(),
-                        "ELEMENT", tag, attributes, depth));
+                        "ELEMENT", tag, attributes, rawAttributes, depth));
 
                 if ("td".equalsIgnoreCase(tag) && !tables.isEmpty()) {
                     TableState table = tables.peek();
@@ -110,7 +119,7 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
                     String header = column < table.headers.size() ? table.headers.get(column) : null;
                     collectTableCell(element, header);
                 } else {
-                    collectField(element, tag, attributes);
+                    collectField(element, tag, attributes, rawAttributes);
                 }
                 if ("a".equalsIgnoreCase(tag) && attributes.containsKey("href")) {
                     events.add(new EventFact("LINK_CLICK", visibleText(element),
@@ -121,18 +130,25 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
                 Map<String, String> attributes = directiveAttributes(directive);
                 flows.add(new FlowFact(flows.size() + 1, directive.getBeginLine(),
                         "DIRECTIVE", attributes.getOrDefault("file", directive.getName()),
-                        attributes, depth));
+                        attributes, Map.of(), depth));
             } else if (node instanceof ASTElExpression expression) {
                 if (expression.getParent() instanceof ASTText) {
                     flows.add(new FlowFact(flows.size() + 1, expression.getBeginLine(),
-                            "EL", rawSource(expression), Map.of(), depth));
+                            "EL", rawSource(expression), Map.of(), Map.of(), depth));
                 }
             }
             for (int i = 0; i < node.getNumChildren(); i++) {
                 node.getChild(i).acceptVisitor(this, nextDepth);
             }
-            if (node instanceof ASTElement element && "table".equalsIgnoreCase(element.getName())) {
-                tables.pop();
+            if (node instanceof ASTElement element) {
+                if ("tr".equalsIgnoreCase(element.getName()) && !tables.isEmpty()) {
+                    tables.peek().capturingHeader = false;
+                } else if ("thead".equalsIgnoreCase(element.getName()) && !tables.isEmpty()) {
+                    tables.peek().inHead = false;
+                    tables.peek().capturingHeader = false;
+                } else if ("table".equalsIgnoreCase(element.getName())) {
+                    tables.pop();
+                }
             }
             return null;
         }
@@ -141,25 +157,31 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             ASTElement loop = ancestorElement(cell, "c:forEach");
             Map<String, String> loopAttributes = loop == null
                     ? Map.of() : elementAttributes(loop);
+            Map<String, String> loopRawAttributes = loop == null
+                    ? Map.of() : elementRawAttributes(loop);
             String loopVar = loop == null ? null : loopAttributes.get("var");
 
             List<ASTElExpression> expressions = new ArrayList<>();
             List<ASTElement> formatTags = new ArrayList<>();
             List<ASTElement> anchors = new ArrayList<>();
-            collectCellNodes(cell, expressions, formatTags, anchors);
+            collectCellNodes(cell, cell, expressions, formatTags, anchors);
 
             if (!formatTags.isEmpty()) {
                 for (ASTElement format : formatTags) {
                     Map<String, String> attributes = elementAttributes(format);
-                    fields.add(new ScreenFieldFact(header, loopVar, attributes.get("value"),
-                            null, attributes, format.getName(), null, format.getBeginLine()));
+                    String name = firstNonBlank(header, format.getName());
+                    fields.add(new ScreenFieldFact(name, loopVar, attributes.get("value"),
+                            null, attributes, elementRawAttributes(format), format.getName(),
+                            null, format.getBeginLine()));
                 }
             } else {
                 for (ASTElExpression expression : expressions) {
-                    Map<String, String> attributes = loop != null && loopsWithElField.add(loop)
-                            ? loopAttributes : Map.of();
-                    fields.add(new ScreenFieldFact(header, loopVar, rawSource(expression),
-                            null, attributes, "EL", null, expression.getBeginLine()));
+                    boolean firstLoopField = loop != null && loopsWithElField.add(loop);
+                    Map<String, String> attributes = firstLoopField ? loopAttributes : Map.of();
+                    Map<String, String> rawAttributes = firstLoopField ? loopRawAttributes : Map.of();
+                    String name = firstNonBlank(header, rawSource(expression));
+                    fields.add(new ScreenFieldFact(name, loopVar, rawSource(expression),
+                            null, attributes, rawAttributes, "EL", null, expression.getBeginLine()));
                 }
             }
             for (ASTElement anchor : anchors) {
@@ -167,8 +189,12 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             }
         }
 
-        private static void collectCellNodes(Node node, List<ASTElExpression> expressions,
+        private static void collectCellNodes(Node node, Node cell, List<ASTElExpression> expressions,
                 List<ASTElement> formatTags, List<ASTElement> anchors) {
+            if (node != cell && node instanceof ASTElement element
+                    && "table".equalsIgnoreCase(element.getName())) {
+                return; // nested tables own their own header/column context
+            }
             if (node instanceof ASTElExpression expression && expression.getParent() instanceof ASTText) {
                 expressions.add(expression);
             } else if (node instanceof ASTElement element) {
@@ -180,22 +206,20 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
                 }
             }
             for (int i = 0; i < node.getNumChildren(); i++) {
-                collectCellNodes(node.getChild(i), expressions, formatTags, anchors);
+                collectCellNodes(node.getChild(i), cell, expressions, formatTags, anchors);
             }
         }
 
-        private void collectField(ASTElement element, String tag, Map<String, String> attrs) {
+        private void collectField(ASTElement element, String tag, Map<String, String> attrs,
+                Map<String, String> rawAttrs) {
             String normalized = tag.toLowerCase(Locale.ROOT);
             if ("spring:message".equalsIgnoreCase(tag)) {
                 fields.add(new ScreenFieldFact("<" + tag + ">", null, null, null,
-                        attrs, tag, attrs.get("code"), element.getBeginLine()));
+                        attrs, rawAttrs, tag, attrs.get("code"), element.getBeginLine()));
                 return;
             }
             if ("form:label".equalsIgnoreCase(tag)) {
-                String path = firstNonBlank(attrs.get("path"), attrs.get("name"));
-                if (path != null) {
-                    formLabels.put(path, visibleText(element));
-                }
+                registerFormLabel(element, attrs);
                 return;
             }
             if ("a".equalsIgnoreCase(tag)) {
@@ -204,11 +228,9 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
                 }
                 return;
             }
-            if ("input".equalsIgnoreCase(tag)) {
-                if ("submit".equalsIgnoreCase(attrs.get("type"))) {
-                    fields.add(new ScreenFieldFact(attrs.get("value"), ancestorFormObject(element),
-                            null, null, attrs, tag, null, element.getBeginLine()));
-                }
+            if ("input".equalsIgnoreCase(tag) || "select".equalsIgnoreCase(tag)
+                    || "textarea".equalsIgnoreCase(tag)) {
+                collectPlainControl(element, tag, attrs, rawAttrs);
                 return;
             }
 
@@ -226,9 +248,58 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
                 return;
             }
             boolean hidden = normalized.equals("form:hidden");
-            String fieldName = hidden ? path : firstNonBlank(formLabels.get(path), path);
+            String fieldName = hidden ? path : firstNonBlank(formLabel(element, path), path);
             fields.add(new ScreenFieldFact(fieldName, ancestorFormObject(element), path,
-                    hidden ? Boolean.FALSE : Boolean.TRUE, attrs, tag, null, element.getBeginLine()));
+                    hidden ? Boolean.FALSE : Boolean.TRUE, attrs, rawAttrs, tag,
+                    null, element.getBeginLine()));
+        }
+
+        private void collectPlainControl(ASTElement element, String tag, Map<String, String> attrs,
+                Map<String, String> rawAttrs) {
+            if ("input".equalsIgnoreCase(tag) && "submit".equalsIgnoreCase(attrs.get("type"))) {
+                fields.add(new ScreenFieldFact(attrs.get("value"), ancestorFormObject(element),
+                        null, null, attrs, rawAttrs, tag, null, element.getBeginLine()));
+                return;
+            }
+            String name = firstNonBlank(attrs.get("name"), attrs.get("id"), attrs.get("path"));
+            if (name == null) {
+                return;
+            }
+            String type = attrs.get("type");
+            if (type == null || type.isBlank()) {
+                type = tag;
+            }
+            boolean hidden = "hidden".equalsIgnoreCase(attrs.get("type"));
+            fields.add(new ScreenFieldFact(name, ancestorFormObject(element), attrs.get("path"),
+                    hidden ? Boolean.FALSE : Boolean.TRUE, attrs, rawAttrs, type,
+                    null, element.getBeginLine()));
+        }
+
+        private void registerFormLabel(ASTElement label, Map<String, String> attrs) {
+            String path = firstNonBlank(attrs.get("path"), attrs.get("name"));
+            ASTElement form = ancestorElement(label, "form:form");
+            if (path == null || form == null) {
+                return;
+            }
+            Map<String, String> labels = formLabels.computeIfAbsent(form, key -> new LinkedHashMap<>());
+            String text = visibleText(label);
+            String previous = labels.putIfAbsent(path, text);
+            if (previous != null && !previous.equals(text)) {
+                ambiguousFormLabels.computeIfAbsent(form, key -> new java.util.HashSet<>()).add(path);
+            }
+        }
+
+        private String formLabel(ASTElement control, String path) {
+            ASTElement form = ancestorElement(control, "form:form");
+            if (form == null) {
+                return null;
+            }
+            Set<String> ambiguous = ambiguousFormLabels.get(form);
+            if (ambiguous != null && ambiguous.contains(path)) {
+                return null;
+            }
+            Map<String, String> labels = formLabels.get(form);
+            return labels == null ? null : labels.get(path);
         }
 
         private void addLinkField(ASTElement anchor) {
@@ -237,7 +308,7 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             String loopVar = loop == null ? null : elementAttributes(loop).get("var");
             fields.add(new ScreenFieldFact(visibleText(anchor), loopVar,
                     firstEl(attributes.get("href")), null, attributes,
-                    anchor.getName(), null, anchor.getBeginLine()));
+                    elementRawAttributes(anchor), anchor.getName(), null, anchor.getBeginLine()));
         }
 
         private static String firstEl(String value) {
@@ -299,6 +370,17 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             return result;
         }
 
+        private static Map<String, String> elementRawAttributes(ASTElement element) {
+            Map<String, String> result = new LinkedHashMap<>();
+            for (int i = 0; i < element.getNumChildren(); i++) {
+                Node child = element.getChild(i);
+                if (child instanceof ASTAttribute attr) {
+                    result.put(attr.getName(), rawSource(attr));
+                }
+            }
+            return result;
+        }
+
         private static Map<String, String> directiveAttributes(ASTJspDirective directive) {
             Map<String, String> result = new LinkedHashMap<>();
             for (int i = 0; i < directive.getNumChildren(); i++) {
@@ -348,6 +430,9 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
         private static final class TableState {
             private final List<String> headers = new ArrayList<>();
             private int cellIndex;
+            private boolean inHead;
+            private boolean headerStarted;
+            private boolean capturingHeader;
         }
     }
 }
