@@ -108,8 +108,10 @@ public final class PoiWorkbookWriter {
                 throw new IllegalArgumentException("Sheet requires TITLE at row 1 and EMPTY at row 2: "
                         + sheet.name());
             }
-            if (sheet.rows().size() > maxRows) {
-                throw new IllegalArgumentException(format + " row limit exceeded in " + sheet.name());
+            int physicalRows = sheet.rows().size() + (sheet.rows().size() > 2 ? 1 : 0);
+            if (physicalRows > maxRows) {
+                throw new IllegalArgumentException(format + " row limit exceeded in " + sheet.name()
+                        + " (including Golden spacer row)");
             }
             for (SheetRow row : sheet.rows()) {
                 if (row.values().size() > maxColumns) {
@@ -128,6 +130,7 @@ public final class PoiWorkbookWriter {
         Sheet sheet = workbook.createSheet(sheetModel.name());
         int width = sheetModel.rows().stream().mapToInt(row -> row.values().size()).max().orElse(1);
         width = Math.max(width, sheetModel.name().equals("01_표제부") ? 6 : 1);
+        double[] goldenWidths = goldenWidths(sheetModel.name(), width);
         for (int i = 0; i < sheetModel.rows().size(); i++) {
             SheetRow definition = sheetModel.rows().get(i);
             int physicalRow = i >= 2 ? i + 1 : i; // Golden leaves physical row 3 blank.
@@ -142,9 +145,7 @@ public final class PoiWorkbookWriter {
                 }
                 continue;
             }
-            row.setHeightInPoints(definition.role() == RowKind.TITLE
-                    ? (sheetModel.name().equals("01_표제부") ? 48 : 42)
-                    : definition.role() == RowKind.HEADER ? 30 : 29.1f);
+            row.setHeightInPoints(estimatedHeight(sheetModel.name(), definition, goldenWidths));
             int cells = width;
             for (int j = 0; j < cells; j++) {
                 Cell cell = row.createCell(j);
@@ -164,13 +165,42 @@ public final class PoiWorkbookWriter {
                 sheet.addMergedRegion(new CellRangeAddress(physicalRow, physicalRow, 0, width - 1));
             }
         }
-        double[] goldenWidths = goldenWidths(sheetModel.name(), width);
         for (int j = 0; j < width; j++) {
             double desired = goldenWidths == null || j >= goldenWidths.length
                     ? (j == 0 ? 25 : 30) : goldenWidths[j];
             sheet.setColumnWidth(j, (int) Math.round(Math.min(255, desired) * 256));
         }
         sheet.setDisplayGridlines(false);
+    }
+
+    /**
+     * POI does not auto-size row heights for wrapped cells. Estimate needed
+     * lines using the Golden column width, preserving long pseudo-code blocks.
+     * Excel's maximum row height is 409 points.
+     */
+    private static float estimatedHeight(String sheetName, SheetRow row, double[] widths) {
+        if (row.role() == RowKind.TITLE) {
+            return sheetName.equals("01_표제부") ? 48f : 42f;
+        }
+        if (row.role() == RowKind.HEADER || row.role() == RowKind.SECTION) {
+            return 30f;
+        }
+        float minimum = sheetName.equals("01_표제부") ? 30f : 29.1f;
+        int maxLines = 1;
+        for (int col = 0; col < row.values().size(); col++) {
+            Object value = row.values().get(col);
+            if (!(value instanceof String text) || text.isEmpty()) {
+                continue;
+            }
+            double width = widths != null && col < widths.length ? widths[col] : (col == 0 ? 25 : 30);
+            int charactersPerLine = Math.max(6, (int) Math.floor(width * 0.88));
+            int lines = 0;
+            for (String physicalLine : text.split("\\R", -1)) {
+                lines += Math.max(1, (physicalLine.length() + charactersPerLine - 1) / charactersPerLine);
+            }
+            maxLines = Math.max(maxLines, lines);
+        }
+        return Math.min(409f, Math.max(minimum, 10f + maxLines * 15f));
     }
 
     private static double[] goldenWidths(String sheetName, int columns) {
