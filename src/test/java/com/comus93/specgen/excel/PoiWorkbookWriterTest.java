@@ -56,6 +56,7 @@ class PoiWorkbookWriterTest {
                 assertEquals(CellType.BLANK, cover.getRow(1).getCell(0).getCellType());
                 assertNull(cover.getRow(2), "Golden row 3 is a visual spacer");
                 assertEquals("번호", cover.getRow(3).getCell(0).getStringCellValue());
+                assertEquals(30.0f, cover.getRow(4).getHeightInPoints());
                 assertEquals(2026, cover.getRow(5).getCell(2).getLocalDateTimeCellValue().getYear());
                 assertEquals(CellType.NUMERIC, cover.getRow(5).getCell(2).getCellType());
                 for (int col = 3; col <= 5; col++) {
@@ -103,6 +104,37 @@ class PoiWorkbookWriterTest {
         try (var paths = Files.list(output.getParent())) {
             assertEquals(2, paths.count(), "no leftover temporary files");
         }
+    }
+
+    @Test
+    void expandsLongDetailRowsSoWrappedSourceTextRemainsReadable() throws Exception {
+        WorkbookModel longDetail = new WorkbookModel(List.of(new SheetModel("상세 사양", List.of(
+            new SheetRow(RowKind.TITLE, List.of("상세 사양")),
+            new SheetRow(RowKind.EMPTY, List.of()),
+            new SheetRow(RowKind.HEADER, List.of("Type", "Name", "Detail", "Remark", "Return")),
+            new SheetRow(RowKind.DATA, List.of("METHOD", "run", "CALL foo();\\n".repeat(55), "", ""))
+        ))));
+        Path output = temp.resolve("long-detail.xlsx");
+        new PoiWorkbookWriter().write(longDetail, output, OutputFormat.XLSX);
+        try (Workbook wb = WorkbookFactory.create(output.toFile())) {
+            assertTrue(wb.getSheetAt(0).getRow(4).getHeightInPoints() >= 120,
+                    "A long pseudo-code detail must not be clipped at the default row height");
+        }
+    }
+
+    @Test
+    void rejectsHssfLogicalRowsAtThePhysicalSpacerBoundary() {
+        List<SheetRow> rows = new ArrayList<>();
+        rows.add(new SheetRow(RowKind.TITLE, List.of("Title")));
+        rows.add(new SheetRow(RowKind.EMPTY, List.of()));
+        for (int i = 0; i < 65534; i++) {
+            rows.add(new SheetRow(RowKind.DATA, List.of()));
+        }
+        WorkbookModel boundary = new WorkbookModel(List.of(new SheetModel("Data", rows)));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> new PoiWorkbookWriter().write(boundary, temp.resolve("boundary.xls"), OutputFormat.XLS));
+        assertTrue(error.getMessage().contains("row limit"),
+                "Check the additional physical spacer row before POI throws");
     }
 
     @Test
