@@ -7,6 +7,7 @@ import java.util.Objects;
 
 import com.comus93.specgen.config.JobConfig;
 import com.comus93.specgen.config.JsonJobConfigReader;
+import com.comus93.specgen.gui.GuiLauncher;
 import com.comus93.specgen.runner.FileResult;
 import com.comus93.specgen.runner.JobRunner;
 import com.comus93.specgen.runner.ProgressEvent;
@@ -15,12 +16,16 @@ import com.comus93.specgen.runner.RunSummary;
 public final class SpecGeneratorApp {
 
     private static final String USAGE =
-            "Usage: spec-generator generate --config <job.json>";
+            "Usage: spec-generator gui | spec-generator generate --config <job.json>";
 
     private SpecGeneratorApp() {
     }
 
     public static void main(String[] args) {
+        if (args != null && args.length == 1 && "gui".equals(args[0])) {
+            GuiLauncher.launch();
+            return;
+        }
         System.exit(runCli(args, System.out, System.err));
     }
 
@@ -38,7 +43,7 @@ public final class SpecGeneratorApp {
             return 2;
         }
         if ("gui".equals(args[0])) {
-            err.println("GUI is not available in this build.");
+            err.println("GUI is only available through the desktop entry point.");
             return 2;
         }
         if (!"generate".equals(args[0])) {
