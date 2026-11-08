@@ -2,6 +2,7 @@ package com.comus93.specgen.parser;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -14,6 +15,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.comus93.specgen.facts.JspFacts;
 import com.comus93.specgen.facts.JspFacts.ConstantFact;
@@ -28,6 +31,7 @@ import net.sourceforge.pmd.lang.ast.Parser;
 import net.sourceforge.pmd.lang.ast.SemanticErrorReporter;
 import net.sourceforge.pmd.lang.document.TextDocument;
 import net.sourceforge.pmd.lang.document.TextFile;
+import net.sourceforge.pmd.lang.document.FileId;
 import net.sourceforge.pmd.lang.jsp.JspLanguageModule;
 import net.sourceforge.pmd.lang.jsp.ast.ASTAttribute;
 import net.sourceforge.pmd.lang.jsp.ast.ASTAttributeValue;
@@ -45,16 +49,31 @@ import net.sourceforge.pmd.util.log.PmdReporter;
  */
 public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
 
+    // PMD JSP accepts a DOCTYPE only at the beginning of a compilation unit.
+    // Mask standalone HTML5 declarations following JSP directives, preserving
+    // character offsets and line numbers without modifying the source file.
+    private static final Pattern HTML5_DOCTYPE_LINE = Pattern.compile(
+            "(?im)^[ \\t]*<!DOCTYPE[ \\t]+html[ \\t]*>[ \\t]*(?=\\r?$)");
+
     @Override
     public JspFacts analyze(Path sourceFile) throws SourceAnalysisException {
         Objects.requireNonNull(sourceFile, "sourceFile");
 
         JspLanguageModule language = JspLanguageModule.getInstance();
+        final String parserSource;
+        try {
+            parserSource = maskHtml5DoctypeAfterDirectives(
+                    Files.readString(sourceFile, StandardCharsets.UTF_8));
+        } catch (IOException error) {
+            throw new SourceAnalysisException(sourceFile,
+                    SourceAnalysisException.READ_ERROR, "", error);
+        }
         try (LanguageProcessorRegistry registry = LanguageProcessorRegistry.create(
                 LanguageRegistry.singleton(language),
                 Map.of(language, language.newPropertyBundle()), PmdReporter.quiet());
              TextDocument document = TextDocument.create(
-                     TextFile.forPath(sourceFile, StandardCharsets.UTF_8, language.getDefaultVersion()))) {
+                     TextFile.forCharSeq(parserSource, FileId.fromPath(sourceFile),
+                             language.getDefaultVersion()))) {
 
             Parser.ParserTask task = new Parser.ParserTask(
                     document, SemanticErrorReporter.noop(), registry);
@@ -70,6 +89,23 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             throw new SourceAnalysisException(sourceFile,
                     SourceAnalysisException.PARSE_ERROR, error.getMessage(), error);
         }
+    }
+
+    private static String maskHtml5DoctypeAfterDirectives(String source) {
+        Matcher matcher = HTML5_DOCTYPE_LINE.matcher(source);
+        StringBuilder result = null;
+        while (matcher.find()) {
+            if (source.lastIndexOf("<%@", matcher.start()) < 0) {
+                continue;
+            }
+            if (result == null) {
+                result = new StringBuilder(source);
+            }
+            for (int index = matcher.start(); index < matcher.end(); index++) {
+                result.setCharAt(index, ' ');
+            }
+        }
+        return result == null ? source : result.toString();
     }
 
     /** Visits PMD's actual JSP syntax tree in source order. */

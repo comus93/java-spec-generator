@@ -199,6 +199,54 @@ class PmdJspAnalyzerTest {
     }
 
     @Test
+    void acceptsHtml5DoctypeAfterPageAndTaglibDirectivesWithoutChangingSourceLines() throws Exception {
+        String source = String.join("\n",
+                "<%@ page language=\"java\" contentType=\"text/html; charset=UTF-8\" pageEncoding=\"UTF-8\" %>",
+                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
+                "<%@ taglib prefix=\"fmt\" uri=\"http://java.sun.com/jsp/jstl/fmt\" %>",
+                "<!DOCTYPE html>",
+                "<html>",
+                "<head><title>Insert title here</title></head>",
+                "<body><input name=\"accountId\" type=\"text\"/></body>",
+                "</html>");
+        Path path = customJsp("directives-doctype.jsp", source);
+
+        JspFacts facts = analyzer.analyze(path);
+
+        assertEquals(source, Files.readString(path, StandardCharsets.UTF_8),
+                "the original JSP must never be rewritten");
+        assertEquals("accountId", field(facts, "accountId").fieldName());
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "html".equalsIgnoreCase(flow.tagOrFile()) && flow.line() == 5));
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "input".equalsIgnoreCase(flow.tagOrFile()) && flow.line() == 7));
+    }
+
+    @Test
+    void acceptsDoctypeAtStartWithoutChangingExistingParserBehavior() throws Exception {
+        Path path = customJsp("doctype-first.jsp",
+                "<!DOCTYPE html>\n<%@ page language=\"java\" %>\n"
+                        + "<html><body><input name=\"first\" /></body></html>");
+
+        JspFacts facts = analyzer.analyze(path);
+
+        assertEquals("first", field(facts, "first").fieldName());
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "html".equalsIgnoreCase(flow.tagOrFile()) && flow.line() == 3));
+    }
+
+    @Test
+    void doesNotSilenceUnsupportedDocumentTypeDeclarations() throws Exception {
+        Path path = customJsp("unsupported-doctype.jsp",
+                "<%@ page language=\"java\" %>\n<!DOCTYPE not-html>\n<html/>");
+
+        SourceAnalysisException error = assertThrows(
+                SourceAnalysisException.class, () -> analyzer.analyze(path));
+
+        assertEquals(SourceAnalysisException.PARSE_ERROR, error.errorCode());
+    }
+
+    @Test
     void reportsFileReadFailureWithoutSwallowingIt() {
         Path missing = tempDir.resolve("missing.jsp");
         SourceAnalysisException error = assertThrows(SourceAnalysisException.class,
