@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -54,16 +55,23 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
     // character offsets and line numbers without modifying the source file.
     private static final Pattern HTML5_DOCTYPE_LINE = Pattern.compile(
             "(?im)^[ \\t]*<!DOCTYPE[ \\t]+html[ \\t]*>[ \\t]*(?=\\r?$)");
+    private static final Pattern INLINE_IF = Pattern.compile(
+            "(?is)<c:if\\b([^<>]*?)>([^<>]*?)</c:if\\s*>");
+    private static final Pattern HTML_OPEN_TAG_PREFIX = Pattern.compile(
+            "(?s)<[A-Za-z][A-Za-z0-9_:.-]*(?:\\s+[^<>]*)?");
+    private static final Pattern CONDITIONAL_ATTRIBUTES = Pattern.compile(
+            "(?s)\\s*[A-Za-z_:][A-Za-z0-9_:.-]*\\s*=\\s*(?:\"[^\"]*\"|'[^']*')"
+                    + "(?:\\s+[A-Za-z_:][A-Za-z0-9_:.-]*\\s*=\\s*(?:\"[^\"]*\"|'[^']*'))*\\s*");
 
     @Override
     public JspFacts analyze(Path sourceFile) throws SourceAnalysisException {
         Objects.requireNonNull(sourceFile, "sourceFile");
 
         JspLanguageModule language = JspLanguageModule.getInstance();
-        final String parserSource;
+        final PreparedJsp parserInput;
         try {
-            parserSource = maskHtml5DoctypeAfterDirectives(
-                    Files.readString(sourceFile, StandardCharsets.UTF_8));
+            parserInput = prepareParserInput(maskHtml5DoctypeAfterDirectives(
+                    Files.readString(sourceFile, StandardCharsets.UTF_8)));
         } catch (IOException error) {
             throw new SourceAnalysisException(sourceFile,
                     SourceAnalysisException.READ_ERROR, "", error);
@@ -72,7 +80,7 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
                 LanguageRegistry.singleton(language),
                 Map.of(language, language.newPropertyBundle()), PmdReporter.quiet());
              TextDocument document = TextDocument.create(
-                     TextFile.forCharSeq(parserSource, FileId.fromPath(sourceFile),
+                     TextFile.forCharSeq(parserInput.content(), FileId.fromPath(sourceFile),
                              language.getDefaultVersion()))) {
 
             Parser.ParserTask task = new Parser.ParserTask(
@@ -80,7 +88,23 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             Node root = registry.getProcessor(language).services().getParser().parse(task);
             Collector collector = new Collector();
             root.acceptVisitor(collector, 0);
-            return new JspFacts(sourceFile, collector.fields, collector.flows,
+            if (parserInput.conditionalAttributes().isEmpty()) {
+                return new JspFacts(sourceFile, collector.fields, collector.flows,
+                        collector.events, List.<ConstantFact>of());
+            }
+            List<FlowFact> flows = new ArrayList<>(collector.flows);
+            for (ConditionalAttribute condition : parserInput.conditionalAttributes()) {
+                flows.add(new FlowFact(0, condition.line(), "CONDITIONAL_ATTRIBUTE", "c:if",
+                        Map.of("condition", condition.condition(),
+                                "attributeFragment", condition.attributes()), 0));
+            }
+            flows.sort(Comparator.comparingInt(FlowFact::line));
+            List<FlowFact> ordered = new ArrayList<>(flows.size());
+            for (FlowFact flow : flows) {
+                ordered.add(new FlowFact(ordered.size() + 1, flow.line(), flow.nodeKind(),
+                        flow.tagOrFile(), flow.attributes(), flow.rawAttributeText(), flow.depth()));
+            }
+            return new JspFacts(sourceFile, collector.fields, ordered,
                     collector.events, List.<ConstantFact>of());
         } catch (IOException error) {
             throw new SourceAnalysisException(sourceFile,
@@ -89,6 +113,52 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             throw new SourceAnalysisException(sourceFile,
                     SourceAnalysisException.PARSE_ERROR, error.getMessage(), error);
         }
+    }
+
+    // A legacy JSP may conditionally emit an HTML attribute inside an opening
+    // tag: <div <c:if test="..."> class='essential' </c:if> style="...">.
+    // PMD treats the nested '<' as an invalid HTML attribute. Remove only that
+    // fragment from the in-memory parser input; retain its raw condition and
+    // attribute text as a separate flow fact, never as an unconditional class.
+    private static PreparedJsp prepareParserInput(String source) {
+        Matcher matcher = INLINE_IF.matcher(source);
+        StringBuilder normalized = null;
+        List<ConditionalAttribute> facts = new ArrayList<>();
+        while (matcher.find()) {
+            int previousOpen = source.lastIndexOf('<', matcher.start() - 1);
+            int previousClose = source.lastIndexOf('>', matcher.start() - 1);
+            if (previousOpen < 0 || previousOpen < previousClose
+                    || !HTML_OPEN_TAG_PREFIX.matcher(
+                            source.substring(previousOpen, matcher.start())).matches()
+                    || !matcher.group(1).matches("(?is).*\\btest\\s*=.*")
+                    || !CONDITIONAL_ATTRIBUTES.matcher(matcher.group(2)).matches()) {
+                continue;
+            }
+            if (normalized == null) {
+                normalized = new StringBuilder(source);
+            }
+            int line = 1;
+            for (int i = 0; i < matcher.start(); i++) {
+                if (source.charAt(i) == '\n') {
+                    line++;
+                }
+            }
+            facts.add(new ConditionalAttribute(line, matcher.group(1).trim(),
+                    matcher.group(2).trim()));
+            for (int i = matcher.start(); i < matcher.end(); i++) {
+                char original = source.charAt(i);
+                if (original != '\r' && original != '\n') {
+                    normalized.setCharAt(i, ' ');
+                }
+            }
+        }
+        return new PreparedJsp(normalized == null ? source : normalized.toString(), facts);
+    }
+
+    private record ConditionalAttribute(int line, String condition, String attributes) {
+    }
+
+    private record PreparedJsp(String content, List<ConditionalAttribute> conditionalAttributes) {
     }
 
     private static String maskHtml5DoctypeAfterDirectives(String source) {

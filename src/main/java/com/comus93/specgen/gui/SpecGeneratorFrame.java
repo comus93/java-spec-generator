@@ -461,6 +461,13 @@ public final class SpecGeneratorFrame extends JFrame {
     private void appendSummary(RunSummary summary) {
         appendLine("완료: 총 " + summary.totalCount() + "건, 성공 " + summary.successCount()
                 + "건, 경고 " + summary.warningCount() + "건, 실패 " + summary.failureCount() + "건");
+        int generated = summary.successCount() + summary.warningCount();
+        if (summary.hasFailures() && generated > 0) {
+            appendLine("부분 성공: 전체 파일 처리를 완료했으며, 사양서 " + generated
+                    + "건은 정상 생성되었습니다. 실패 " + summary.failureCount()
+                    + "건은 아래 원본 코드 및 오류 위치를 확인하세요.");
+            appendLine("생성 결과 폴더: " + outputDirectoryField.getText().trim());
+        }
         for (FileResult result : summary.results()) {
             if (result.status() == FileResult.FileStatus.SUCCESS) {
                 continue;

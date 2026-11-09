@@ -94,7 +94,8 @@ public final class JobRunner {
             return new FileResult(job.sourceFile(), job.outputFile(),
                     FileResult.FileStatus.SUCCESS, "", "");
         } catch (SourceAnalysisException exception) {
-            return failed(job, exception.errorCode(), exception.getMessage());
+            return failed(job, exception.errorCode(), ParseSourceExcerpt.append(
+                    job.sourceFile(), exception.errorCode(), exception.getMessage()));
         } catch (IOException exception) {
             return failed(job, WRITE_ERROR, concise(exception));
         } catch (RuntimeException exception) {

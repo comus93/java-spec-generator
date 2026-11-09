@@ -247,6 +247,64 @@ class PmdJspAnalyzerTest {
     }
 
     @Test
+    void preservesConditionalAttributeEvidenceInLegacyJspOpeningTag() throws Exception {
+        String source = String.join("\n",
+                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
+                "<div <c:if test=\"$(param.mode == 'EDIT'}\"> class='essential' </c:if> "
+                        + "style=\"margin-right: 5px; display: flex; aligh-items: center; line-height:21px;\">",
+                "    <cpc:escv code=\"MIP-M0006\" value=\"유효 기간\" />",
+                "</div>");
+        Path path = customJsp("conditional-attribute.jsp", source);
+
+        JspFacts facts = analyzer.analyze(path);
+
+        assertEquals(source, Files.readString(path, StandardCharsets.UTF_8));
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "div".equalsIgnoreCase(flow.tagOrFile())
+                        && flow.line() == 2
+                        && flow.attributes().containsKey("style")
+                        && !flow.attributes().containsKey("class")));
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "c:if".equalsIgnoreCase(flow.tagOrFile())
+                        && flow.line() == 2
+                        && "CONDITIONAL_ATTRIBUTE".equals(flow.nodeKind())
+                        && flow.attributes().get("condition").contains("param.mode")
+                        && "class='essential'".equals(flow.attributes().get("attributeFragment"))));
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "cpc:escv".equalsIgnoreCase(flow.tagOrFile()) && flow.line() == 3));
+        assertEquals(List.of(1, 2, 3, 4),
+                facts.flows().stream().limit(4).map(FlowFact::sequence).toList());
+        for (int i = 1; i < facts.flows().size(); i++) {
+            assertTrue(facts.flows().get(i - 1).line() <= facts.flows().get(i).line());
+        }
+    }
+
+    @Test
+    void preservesStandaloneJstlIfAndItsChildren() throws Exception {
+        Path path = customJsp("standalone-if.jsp",
+                "<div><c:if test=\"\u0024{enabled}\"><input name=\"code\"/></c:if></div>");
+
+        JspFacts facts = analyzer.analyze(path);
+
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "c:if".equalsIgnoreCase(flow.tagOrFile())
+                        && "ELEMENT".equals(flow.nodeKind())));
+        assertEquals("code", field(facts, "code").fieldName());
+    }
+
+    @Test
+    void doesNotSilenceInvalidConditionalContentInOpeningTag() throws Exception {
+        Path path = customJsp("invalid-inline-cif.jsp",
+                "<div <c:if test=\"\u0024{edit}\"><span>not-an-attribute</span>"
+                        + "</c:if> style=\"flex:1\"></div>");
+
+        SourceAnalysisException error = assertThrows(
+                SourceAnalysisException.class, () -> analyzer.analyze(path));
+
+        assertEquals(SourceAnalysisException.PARSE_ERROR, error.errorCode());
+    }
+
+    @Test
     void reportsFileReadFailureWithoutSwallowingIt() {
         Path missing = tempDir.resolve("missing.jsp");
         SourceAnalysisException error = assertThrows(SourceAnalysisException.class,

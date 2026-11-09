@@ -94,6 +94,14 @@ public final class SpecGeneratorApp {
                 + summary.successCount() + " succeeded, "
                 + summary.warningCount() + " warning(s), "
                 + summary.failureCount() + " failed.");
+        int generated = summary.successCount() + summary.warningCount();
+        if (summary.hasFailures() && generated > 0) {
+            out.println("Partial success: " + generated
+                    + " workbook(s) generated despite " + summary.failureCount()
+                    + " failed source file(s). All source files were attempted.");
+            out.println("Output directory: " + config.outputDirectory());
+            out.println("Exit code 1 indicates partial failure; generated workbooks are retained.");
+        }
         return summary.hasFailures() ? 1 : 0;
     }
 

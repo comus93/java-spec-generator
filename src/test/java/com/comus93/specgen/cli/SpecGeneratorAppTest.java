@@ -92,6 +92,55 @@ class SpecGeneratorAppTest {
     }
 
     @Test
+    void printsOriginalJspSourceExcerptInCliFailureSummary() throws IOException {
+        Path source = tempDir.resolve("sources").resolve("module");
+        write(source.resolve("Unsupported.jsp"), String.join("\n",
+                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if> style=\"x:y\">",
+                "  <cpc:escv code=\"MIP-M0006\" value=\"유효 기간\" />",
+                "</div>"));
+        Path job = writeJob(SourceMode.JSP, tempDir.resolve("output"), source);
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = SpecGeneratorApp.runCli(
+                new String[]{"generate", "--config", job.toString()},
+                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        String diagnostic = err.toString(StandardCharsets.UTF_8);
+        assertEquals(1, exitCode);
+        assertTrue(diagnostic.contains("Source excerpt (original JSP)"), diagnostic);
+        assertTrue(diagnostic.contains(">    2 | <div <c:if"), diagnostic);
+        assertTrue(diagnostic.contains("MIP-M0006"), diagnostic);
+        assertTrue(diagnostic.contains("^"), diagnostic);
+    }
+
+    @Test
+    void reportsPartialJspCompletionAndSuccessfulOutputDirectory() throws IOException {
+        Path source = tempDir.resolve("sources").resolve("jsp");
+        write(source.resolve("01-valid.jsp"), "<html><input name=\"first\"/></html>");
+        write(source.resolve("02-invalid.jsp"),
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if>></div>");
+        write(source.resolve("03-valid.jsp"), "<html><a href=\"/next\">Continue</a></html>");
+        Path output = tempDir.resolve("workbooks");
+        Path job = writeJob(SourceMode.JSP, output, source);
+        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+
+        int exitCode = SpecGeneratorApp.runCli(
+                new String[]{"generate", "--config", job.toString()},
+                new PrintStream(stdout, true, StandardCharsets.UTF_8),
+                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+
+        String log = stdout.toString(StandardCharsets.UTF_8);
+        assertEquals(1, exitCode);
+        assertTrue(log.contains("[3/3] SUCCESS"), log);
+        assertTrue(log.contains("Partial success:"), log);
+        assertTrue(log.contains(output.toString()), log);
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("03-valid.xls")));
+    }
+
+    @Test
     void warningOnlyRunReturnsZero() throws IOException {
         Path source = tempDir.resolve("sources").resolve("module");
         write(source.resolve("Warn.java"), "class Warn {}");

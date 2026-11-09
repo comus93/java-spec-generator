@@ -63,6 +63,59 @@ class JobRunnerTest {
     }
 
     @Test
+    void parseFailureShowsOriginalSourceExcerptAndCaretInResult() throws IOException {
+        Path module = tempDir.resolve("sources").resolve("jsp");
+        Path source = write(module.resolve("Unsupported.jsp"), String.join("\n",
+                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
+                "<div <c:if test=\"\u0024{edit}\"><span>not-an-attribute</span></c:if> "
+                        + "style=\"display:flex\">",
+                "  <cpc:escv code=\"MIP-M0006\" value=\"유효 기간\" />",
+                "</div>"));
+
+        RunSummary summary = new JobRunner().run(
+                config(SourceMode.JSP, tempDir.resolve("output"), module), event -> { });
+
+        FileResult failed = summary.results().get(0);
+        assertEquals(FileResult.FileStatus.FAILED, failed.status());
+        assertEquals(SourceAnalysisException.PARSE_ERROR, failed.errorCode());
+        assertTrue(failed.message().contains("Source excerpt (original JSP)"));
+        assertTrue(failed.message().contains(">    2 | <div <c:if"), failed.message());
+        assertTrue(failed.message().contains("not-an-attribute"), failed.message());
+        assertTrue(failed.message().contains("MIP-M0006"), failed.message());
+        assertTrue(failed.message().contains("^"), failed.message());
+        assertTrue(Files.exists(source));
+    }
+
+    @Test
+    void jspParseFailureDoesNotStopLaterFilesOrEraseSuccessfulWorkbooks() throws IOException {
+        Path module = tempDir.resolve("sources").resolve("jsp");
+        write(module.resolve("01-valid.jsp"), "<html><body><input name=\"first\"/></body></html>");
+        write(module.resolve("02-invalid.jsp"),
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if> "
+                        + "style=\"display:flex\"></div>");
+        write(module.resolve("03-valid.jsp"),
+                "<html><body><a href=\"/next\">Next</a></body></html>");
+        List<ProgressEvent> events = new ArrayList<>();
+        Path output = tempDir.resolve("output");
+
+        RunSummary summary = new JobRunner().run(
+                config(SourceMode.JSP, output, module), events::add);
+
+        assertEquals(3, summary.totalCount());
+        assertEquals(2, summary.successCount());
+        assertEquals(1, summary.failureCount());
+        assertEquals(List.of(FileResult.FileStatus.SUCCESS,
+                FileResult.FileStatus.FAILED,
+                FileResult.FileStatus.SUCCESS),
+                summary.results().stream().map(FileResult::status).toList());
+        assertEquals(List.of(1, 2, 3),
+                events.stream().map(ProgressEvent::completed).toList());
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
+        assertFalse(Files.exists(output.resolve("jsp").resolve("02-invalid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("03-valid.xls")));
+    }
+
+    @Test
     void continuesAfterAParseFailureAndIsolatesTheFailedFile() throws IOException {
         Path module = tempDir.resolve("sources").resolve("mixed");
         write(module.resolve("Bad.java"), "class Bad { void broken( { }");
