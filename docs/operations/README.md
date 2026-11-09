@@ -40,6 +40,9 @@ target\jpackage\SpecGenerator\SpecGeneratorGUI.exe
 
 The GUI requires a desktop session. Closing the window ends the application. The GUI and CLI use
 the same scanner, analyzers, mappers, and workbook writer.
+The GUI initially selects an `output` folder next to the running JAR. When running from
+development classes or when the JAR location is unavailable, it falls back to `output` under
+the working directory. You can edit the output directory field or choose another folder.
 
 ## JSP recovery and diagnostics
 
@@ -94,6 +97,13 @@ modes go to `D:\SpecOutput\SYS1\logs`.
 
 Repeated runs overwrite only the generated workbook for the same source; unrelated output files
 and source files are preserved. Files generated in the legacy layout are not moved or deleted.
+
+In Java workbooks, text exceeding Excel's 32,767-character cell limit is continued across
+consecutive rows rather than truncated. Continuation rows are marked `↳ 계속`. To reconstruct
+the original text, concatenate the fragments in the same column in row order, without adding
+separators; existing line breaks are part of the fragments. Other values appear on the first
+row. If a sheet exceeds its format's row limit, generation fails rather than truncating it;
+use XLSX for a larger limit or split the output.
 
 ## Build and package
 

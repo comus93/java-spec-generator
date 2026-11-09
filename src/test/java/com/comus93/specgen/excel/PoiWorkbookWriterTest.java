@@ -155,7 +155,14 @@ class PoiWorkbookWriterTest {
     }
 
     @Test
-    void rejectsHssfRowOverflowWithoutSilentlyTruncating() {
+    void rejectsHssfRowOverflowWithoutSilentlyTruncating() throws Exception {
+        Path output = temp.resolve("too-tall.xls");
+        try (Workbook existing = new org.apache.poi.hssf.usermodel.HSSFWorkbook();
+                var stream = Files.newOutputStream(output)) {
+            existing.createSheet("Existing").createRow(0).createCell(0).setCellValue("preserve me");
+            existing.write(stream);
+        }
+        byte[] original = Files.readAllBytes(output);
         List<SheetRow> rows = new ArrayList<>();
         rows.add(new SheetRow(RowKind.TITLE, List.of("Title")));
         rows.add(new SheetRow(RowKind.EMPTY, List.of()));
@@ -163,8 +170,39 @@ class PoiWorkbookWriterTest {
             rows.add(new SheetRow(RowKind.DATA, List.of()));
         }
         WorkbookModel tooTall = new WorkbookModel(List.of(new SheetModel("Data", rows)));
-        assertThrows(IllegalArgumentException.class,
-            () -> new PoiWorkbookWriter().write(tooTall, temp.resolve("too-tall.xls"), OutputFormat.XLS));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> new PoiWorkbookWriter().write(tooTall, output, OutputFormat.XLS));
+        String message = error.getMessage().toLowerCase(java.util.Locale.ROOT);
+        assertTrue(message.contains("xls") && message.contains("row limit"),
+                "The error should identify the XLS row limit");
+        assertTrue(message.contains("data") && message.contains("65536"),
+                "The error should identify the sheet and physical row limit");
+        assertTrue(message.contains("xlsx") || message.contains("split"),
+                "The error should suggest XLSX or splitting the output");
+        assertArrayEquals(original, Files.readAllBytes(output), "Existing workbook must remain unchanged");
+        try (var paths = Files.list(temp)) {
+            assertEquals(1, paths.count(), "Validation must not leave a temporary file");
+        }
+    }
+
+    @Test
+    void reportsXlsxRowLimitAndPreservesExistingFile() throws Exception {
+        Path output = temp.resolve("too-tall.xlsx");
+        Files.writeString(output, "existing");
+        List<SheetRow> rows = new ArrayList<>();
+        rows.add(new SheetRow(RowKind.TITLE, List.of("Title")));
+        rows.add(new SheetRow(RowKind.EMPTY, List.of()));
+        rows.addAll(java.util.Collections.nCopies(1048574, new SheetRow(RowKind.DATA, List.of())));
+        WorkbookModel tooTall = new WorkbookModel(List.of(new SheetModel("Large", rows)));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> new PoiWorkbookWriter().write(tooTall, output, OutputFormat.XLSX));
+        String message = error.getMessage().toLowerCase(java.util.Locale.ROOT);
+        assertTrue(message.contains("xlsx") && message.contains("row limit")
+                && message.contains("large") && message.contains("1048576") && message.contains("split"));
+        assertEquals("existing", Files.readString(output));
+        try (var paths = Files.list(temp)) {
+            assertEquals(1, paths.count(), "Validation must not leave a temporary file");
+        }
     }
 
     @Test

@@ -73,7 +73,7 @@ public final class SpecGeneratorFrame extends JFrame {
     private final JTextField authoringDateField = new JTextField();
     private final JTextField programNameField = new JTextField();
     private final JTextArea overviewArea = new JTextArea(3, 40);
-    private final JTextField outputDirectoryField = new JTextField();
+    private final JTextField outputDirectoryField = new JTextField(DefaultOutputDirectory.resolve().toString());
     private final JComboBox<OutputFormat> outputFormat = new JComboBox<>(OutputFormat.values());
 
     private final JTable moduleTable = new JTable(moduleModel);

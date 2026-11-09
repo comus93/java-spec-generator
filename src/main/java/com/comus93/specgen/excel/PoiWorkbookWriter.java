@@ -108,10 +108,14 @@ public final class PoiWorkbookWriter {
                 throw new IllegalArgumentException("Sheet requires TITLE at row 1 and EMPTY at row 2: "
                         + sheet.name());
             }
-            int physicalRows = sheet.rows().size() + (sheet.rows().size() > 2 ? 1 : 0);
+            long physicalRows = (long) sheet.rows().size() + (sheet.rows().size() > 2 ? 1 : 0);
             if (physicalRows > maxRows) {
-                throw new IllegalArgumentException(format + " row limit exceeded in " + sheet.name()
-                        + " (including Golden spacer row)");
+                String advice = format == OutputFormat.XLS
+                        ? "Use XLSX or split the output."
+                        : "Split the output.";
+                throw new IllegalArgumentException(format + " row limit exceeded in sheet '" + sheet.name()
+                        + "': " + physicalRows + " rows including Golden spacer row; limit is "
+                        + maxRows + ". " + advice);
             }
             for (SheetRow row : sheet.rows()) {
                 if (row.values().size() > maxColumns) {

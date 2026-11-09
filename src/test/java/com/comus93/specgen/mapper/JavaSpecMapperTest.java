@@ -134,7 +134,7 @@ class JavaSpecMapperTest {
         Path source = temp.resolve("nested/Empty.java");
         JavaFacts facts = new JavaFacts(source, "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
         ModuleSelection module = new ModuleSelection(temp, "", "");
-        JobConfig config = new JobConfig(SourceMode.JAVA, "", "", null, "", "", temp.resolve("out"),
+        JobConfig config = new JobConfig(SourceMode.JAVA, "SYS", "", null, "", "", temp.resolve("out"),
                 OutputFormat.XLS, List.of(module));
         SourceJob job = new SourceJob(module, source, Path.of("nested/Empty.java"), temp.resolve("out/Empty.xls"));
         WorkbookModel model = mapper.map(facts, config, job);
@@ -145,6 +145,7 @@ class JavaSpecMapperTest {
                 assertTrue(data(s).get(0).stream().allMatch(JavaSpecMapperTest::blank));
             }
         }
+        assertEquals("SYS", data(model.sheets().get(0)).get(0).get(2));
         assertTrue(blank(data(model.sheets().get(0)).get(6).get(2)));
         assertTrue(blank(data(model.sheets().get(0)).get(9).get(2)));
     }
@@ -165,6 +166,196 @@ class JavaSpecMapperTest {
             assertEquals(model.sheets().get(0).rows().get(2).values().get(0),
                     sheet.getRow(3).getCell(0).getStringCellValue());
             assertEquals("01", sheet.getRow(4).getCell(0).getStringCellValue());
+        }
+    }
+
+    @Test
+    void oversizedTextContinuesLosslesslyInBothWorkbookFormats() throws Exception {
+        String snippet = "x".repeat(32760) + "😀" + "y".repeat(100);
+        String javadoc = "Documentation " + "d".repeat(33000);
+        String initializer = "\"prefix" + "i".repeat(33000) + "😀suffix\"";
+        List<StepFact> manySteps = new ArrayList<>();
+        List<String> manyLines = new ArrayList<>();
+        for (int i = 1; i <= 400; i++) {
+            String source = "step" + i + "_" + "s".repeat(90);
+            manySteps.add(new StepFact(i, "CALL", i, "", source, ""));
+            manyLines.add("CALL  " + source);
+        }
+        String manyDetail = String.join("\n", manyLines);
+        assertTrue(manyDetail.length() > 32767);
+        MethodFact large = new MethodFact("aLarge", "aLarge()", List.of(), "void", "public",
+                1, 2, javadoc, List.of(new StepFact(1, "CALL", 1, "", snippet, "")));
+        MethodFact many = new MethodFact("bMany", "bMany()", List.of(), "void", "private",
+                3, 4, "many", manySteps);
+        MethodFact small = new MethodFact("zSmall", "zSmall()", List.of(), "int", "public",
+                5, 6, "small", List.of(new StepFact(1, "CALL", 5, "", "ok()", "")));
+        JavaFacts facts = new JavaFacts(temp.resolve("Overflow.java"), "Class",
+                List.of(new VariableFact("FIELD", "value", "String", "static", "class",
+                        initializer, 1, "Overflow")),
+                List.of(large, many, small), List.of(), List.of(), List.of(),
+                List.of(new StaticInitFact("value", "FIELD", initializer, 1)));
+        WorkbookModel model = map(facts, LocalDate.of(2020, 1, 2));
+        assertOverflowRows(model.sheets().stream().collect(java.util.stream.Collectors.toMap(
+                SheetModel::name, s -> data(s).stream().map(JavaSpecMapperTest::strings).toList())),
+                snippet, javadoc, initializer, manyDetail);
+        for (SheetModel sheet : model.sheets()) {
+            for (SheetRow row : sheet.rows()) {
+                for (Object value : row.values()) {
+                    if (value instanceof String text) assertTrue(text.length() <= 32767, sheet.name());
+                }
+            }
+        }
+        for (OutputFormat format : List.of(OutputFormat.XLS, OutputFormat.XLSX)) {
+            Path output = temp.resolve("overflow." + format.name().toLowerCase(java.util.Locale.ROOT));
+            new PoiWorkbookWriter().write(model, output, format);
+            try (Workbook workbook = WorkbookFactory.create(output.toFile())) {
+                java.util.Map<String, List<List<String>>> rows = new java.util.HashMap<>();
+                DataFormatter formatter = new DataFormatter();
+                for (SheetModel definition : model.sheets()) {
+                    Sheet physical = workbook.getSheet(definition.name());
+                    List<List<String>> dataRows = new ArrayList<>();
+                    int width = definition.rows().get(2).values().size();
+                    for (int i = 0; i < data(definition).size(); i++) {
+                        List<String> values = new ArrayList<>();
+                        for (int column = 0; column < width; column++) {
+                            values.add(formatter.formatCellValue(physical.getRow(i + 4).getCell(column)));
+                        }
+                        dataRows.add(values);
+                    }
+                    rows.put(definition.name(), dataRows);
+                    for (org.apache.poi.ss.usermodel.Row row : physical) {
+                        for (org.apache.poi.ss.usermodel.Cell cell : row) {
+                            assertTrue(formatter.formatCellValue(cell).length() <= 32767, definition.name());
+                        }
+                    }
+                }
+                assertOverflowRows(rows, snippet, javadoc, initializer, manyDetail);
+            }
+        }
+    }
+
+    @Test
+    void exactCellLimitAndSurrogateBoundaryRoundTripInBothFormats() throws Exception {
+        String atLimit = "a".repeat(32765) + "😀";
+        String overLimit = "b".repeat(32766) + "😀";
+        assertEquals(32767, atLimit.length());
+        assertEquals(32768, overLimit.length());
+        JavaFacts facts = new JavaFacts(temp.resolve("Boundary.java"), "Class", List.of(), List.of(),
+                List.of(new CallFact(1, "normal", atLimit, "target"),
+                        new CallFact(2, "large", overLimit, "target")),
+                List.of(), List.of(), List.of());
+        WorkbookModel model = map(facts, LocalDate.of(2020, 1, 2));
+        List<List<String>> rows = data(sheet(model, "05_호출관계")).stream()
+                .map(JavaSpecMapperTest::strings).toList();
+        assertBoundaryRows(rows, atLimit, overLimit);
+
+        for (OutputFormat format : List.of(OutputFormat.XLS, OutputFormat.XLSX)) {
+            Path output = temp.resolve("boundary." + format.name().toLowerCase(java.util.Locale.ROOT));
+            new PoiWorkbookWriter().write(model, output, format);
+            try (Workbook workbook = WorkbookFactory.create(output.toFile())) {
+                Sheet physical = workbook.getSheet("05_호출관계");
+                DataFormatter formatter = new DataFormatter();
+                List<List<String>> written = new ArrayList<>();
+                for (int row = 4; row < 7; row++) {
+                    List<String> values = new ArrayList<>();
+                    for (int column = 0; column < 3; column++) {
+                        values.add(formatter.formatCellValue(physical.getRow(row).getCell(column)));
+                    }
+                    written.add(values);
+                }
+                assertBoundaryRows(written, atLimit, overLimit);
+            }
+        }
+    }
+
+    private static void assertBoundaryRows(List<List<String>> rows, String atLimit, String overLimit) {
+        assertEquals(3, rows.size());
+        assertEquals(List.of("normal", atLimit, "target"), rows.get(0));
+        assertEquals(List.of("large", "b".repeat(32766), "target"), rows.get(1));
+        assertEquals(List.of("↳ 계속", "😀", ""), rows.get(2));
+        assertEquals(overLimit, joinColumn(rows.subList(1, 3), 1));
+    }
+
+    @Test
+    void allLongColumnsKeepTheirFragmentsAndUseAnExtraAssociationColumn() {
+        String first = "a".repeat(32766) + "😀" + "b".repeat(20);
+        String second = "line one\n" + "c".repeat(33000);
+        String third = "d".repeat(33000);
+        JavaFacts facts = new JavaFacts(temp.resolve("Calls.java"), "Class", List.of(), List.of(),
+                List.of(new CallFact(1, first, second, third)), List.of(), List.of(), List.of());
+        List<List<String>> rows = data(sheet(map(facts, LocalDate.of(2020, 1, 2)), "05_호출관계"))
+                .stream().map(JavaSpecMapperTest::strings).toList();
+        assertEquals(first, joinColumn(rows, 0));
+        assertEquals(second, joinColumn(rows, 1));
+        assertEquals(third, joinColumn(rows, 2));
+        assertEquals("line one\n", rows.get(0).get(1));
+        assertFalse(Character.isHighSurrogate(rows.get(0).get(0).charAt(rows.get(0).get(0).length() - 1)));
+        for (List<String> row : rows) {
+            for (int column = 0; column < 3; column++) assertTrue(row.get(column).length() <= 32767);
+        }
+        for (int i = 1; i < rows.size(); i++) assertFalse(rows.get(i).get(3).isEmpty());
+    }
+
+    private static void assertOverflowRows(java.util.Map<String, List<List<String>>> sheets,
+            String snippet, String javadoc, String initializer, String manyDetail) {
+        List<List<String>> details = sheets.get("상세 사양");
+        int many = indexOfFirstColumn(details, "bMany");
+        int small = indexOfFirstColumn(details, "zSmall");
+        assertEquals(List.of("aLarge", "public", "", javadoc.substring(0,
+                details.get(0).get(3).length()), details.get(0).get(4), "", "void"), details.get(0));
+        assertTrue(many > 1);
+        assertTrue(small - many > 1);
+        assertEquals(javadoc, joinColumn(details.subList(0, many), 3));
+        assertEquals("CALL  " + snippet, joinColumn(details.subList(0, many), 4));
+        assertEquals(manyDetail, joinColumn(details.subList(many, small), 4));
+        assertEquals(List.of("zSmall", "public", "", "small", "CALL  ok()", "", "int"), details.get(small));
+        assertEquals(small + 1, details.size());
+        assertAssociated(details.subList(1, many), 3, 4);
+        assertAssociated(details.subList(many + 1, small), 3, 4);
+
+        List<List<String>> steps = sheets.get("04_처리단계");
+        int nextMethod = indexOfFirstColumn(steps, "bMany()");
+        assertTrue(nextMethod > 1);
+        assertEquals(List.of("aLarge()", "1", "CALL", "", steps.get(0).get(4), ""), steps.get(0));
+        assertEquals(snippet, joinColumn(steps.subList(0, nextMethod), 4));
+        assertAssociated(steps.subList(1, nextMethod), 4);
+        assertEquals(List.of("zSmall()", "1", "CALL", "", "ok()", ""), steps.get(steps.size() - 1));
+
+        List<List<String>> variables = sheets.get("02_OBJ정의");
+        assertTrue(variables.size() > 1);
+        assertEquals(List.of("FIELD", "value", "String", "static", "class",
+                variables.get(0).get(5), "Overflow"), variables.get(0));
+        assertEquals(initializer, joinColumn(variables, 5));
+        assertAssociated(variables.subList(1, variables.size()), 5);
+        List<List<String>> initializers = sheets.get("06_정적초기화");
+        assertTrue(initializers.size() > 1);
+        assertEquals(List.of("value", "FIELD", initializers.get(0).get(2)), initializers.get(0));
+        assertEquals(initializer, joinColumn(initializers, 2));
+        assertAssociated(initializers.subList(1, initializers.size()), 2);
+    }
+
+    private static int indexOfFirstColumn(List<List<String>> rows, String value) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (value.equals(rows.get(i).get(0))) return i;
+        }
+        fail("Missing row: " + value);
+        return -1;
+    }
+
+    private static String joinColumn(List<List<String>> rows, int column) {
+        return rows.stream().map(row -> row.get(column)).collect(java.util.stream.Collectors.joining());
+    }
+
+    private static void assertAssociated(List<List<String>> rows, int... textColumns) {
+        for (List<String> row : rows) {
+            boolean associated = false;
+            for (int column = 0; column < row.size(); column++) {
+                final int index = column;
+                if (Arrays.stream(textColumns).noneMatch(c -> c == index) && !row.get(column).isEmpty()) {
+                    associated = true;
+                }
+            }
+            assertTrue(associated, "Continuation row must visibly identify its logical row");
         }
     }
 

@@ -140,9 +140,66 @@ public final class JavaSpecMapper {
         if (data.isEmpty()) {
             rows.add(new SheetRow(RowKind.DATA, Collections.nCopies(headers.size(), null)));
         } else {
-            data.forEach(values -> rows.add(new SheetRow(RowKind.DATA, values)));
+            data.forEach(values -> addDataRows(rows, values));
         }
         return new SheetModel(name, rows);
+    }
+
+    private static void addDataRows(List<SheetRow> rows, List<Object> values) {
+        final int limit = 32767;
+        List<List<String>> fragments = null;
+        int rowCount = 1;
+        int markerColumn = -1;
+        for (int column = 0; column < values.size(); column++) {
+            Object value = values.get(column);
+            if (value instanceof String text && text.length() > limit) {
+                if (fragments == null) {
+                    fragments = new ArrayList<>(values.size());
+                    fragments.addAll(Collections.nCopies(column, null));
+                }
+                List<String> parts = new ArrayList<>();
+                int start = 0;
+                while (start < text.length()) {
+                    int end = Math.min(start + limit, text.length());
+                    if (end < text.length()) {
+                        int newline = text.lastIndexOf('\n', end - 1);
+                        if (newline >= start) {
+                            end = newline + 1;
+                        } else if (Character.isHighSurrogate(text.charAt(end - 1))
+                                && Character.isLowSurrogate(text.charAt(end))) {
+                            end--;
+                        }
+                    }
+                    parts.add(text.substring(start, end));
+                    start = end;
+                }
+                fragments.add(parts);
+                rowCount = Math.max(rowCount, parts.size());
+            } else {
+                if (fragments != null) fragments.add(null);
+                if (markerColumn < 0) markerColumn = column;
+            }
+        }
+        if (rowCount == 1) {
+            rows.add(new SheetRow(RowKind.DATA, values));
+            return;
+        }
+        for (int row = 0; row < rowCount; row++) {
+            List<Object> cells = new ArrayList<>(Collections.nCopies(values.size(), null));
+            for (int column = 0; column < values.size(); column++) {
+                List<String> parts = fragments.get(column);
+                if (parts != null && row < parts.size()) {
+                    cells.set(column, parts.get(row));
+                } else if (parts == null && row == 0) {
+                    cells.set(column, values.get(column));
+                }
+            }
+            if (row > 0) {
+                if (markerColumn < 0) cells.add("↳ 계속");
+                else cells.set(markerColumn, "↳ 계속");
+            }
+            rows.add(new SheetRow(RowKind.DATA, cells));
+        }
     }
 
     private static List<Object> cells(Object... values) {
