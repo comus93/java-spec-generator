@@ -75,7 +75,7 @@ class JspSpecMapperTest {
         assertEquals(10, book.sheets().get(0).rows().stream().filter(r -> r.role() == RowKind.DATA).count());
         assertTrue(book.sheets().get(2).rows().stream().filter(r -> r.role() == RowKind.DATA).allMatch(r -> r.values().size() == 3));
     }
-    @Test void warnsOnlyForRecoveredFactsWithoutChangingMappedFacts() {
+    @Test void mapsRecoveredFactsWithoutWorkbookWarningRows() {
         Path source = root.resolve("recovered.jsp");
         SourceJob job = new SourceJob(module, source, Path.of("recovered.jsp"), Path.of("out", "recovered.xlsx"));
         List<JspFacts.EventFact> events = List.of(new JspFacts.EventFact("LINK_CLICK", "Open", "/open", null, 1));
@@ -91,14 +91,12 @@ class JspSpecMapperTest {
         }
         List<SheetRow> strictDetail = strictBook.sheets().get(4).rows();
         List<SheetRow> recoveredDetail = recoveredBook.sheets().get(4).rows();
-        assertEquals(new SheetRow(RowKind.SECTION, List.of("WARNING: Recovered JSP; facts may be incomplete.")),
-                recoveredDetail.get(2));
-        assertEquals(new SheetRow(RowKind.SECTION, List.of("Structural nesting and conditional relationships may be omitted.")),
-                recoveredDetail.get(3));
-        assertEquals(strictDetail.subList(0, 2), recoveredDetail.subList(0, 2));
-        assertEquals(strictDetail.subList(2, strictDetail.size()), recoveredDetail.subList(4, recoveredDetail.size()));
-        assertTrue(strictBook.sheets().stream().flatMap(sheet -> sheet.rows().stream())
+        assertEquals(strictDetail, recoveredDetail);
+        assertTrue(recoveredDetail.stream().flatMap(row -> row.values().stream())
+                .anyMatch("Open"::equals));
+        assertTrue(recoveredBook.sheets().stream().flatMap(sheet -> sheet.rows().stream())
                 .flatMap(row -> row.values().stream())
-                .noneMatch(value -> value instanceof String text && text.contains("WARNING")));
+                .noneMatch(value -> "WARNING: Recovered JSP; facts may be incomplete.".equals(value)
+                        || "Structural nesting and conditional relationships may be omitted.".equals(value)));
     }
 }
