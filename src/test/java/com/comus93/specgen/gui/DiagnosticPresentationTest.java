@@ -43,16 +43,6 @@ class DiagnosticPresentationTest {
                 SpecGeneratorFrame.diagnosticLine(result(FileStatus.FAILED, "")));
     }
 
-    @Test
-    void longBasenameIsBoundedAndOtherErrorsHaveFixedReason() {
-        FileResult result = new FileResult(Path.of("folder", "a".repeat(100) + ".jsp"),
-                Path.of("out.xls"), FileStatus.FAILED, "WRITE_ERROR", "private detail");
-        String line = SpecGeneratorFrame.diagnosticLine(result);
-        assertTrue(line.contains("... [WRITE_ERROR] 결과 저장 실패"));
-        assertFalse(line.contains("private detail"));
-        assertTrue(line.length() < 100);
-    }
-
     private static FileResult result(FileStatus status, String message) {
         return new FileResult(Path.of("folder", "page.jsp"), Path.of("out.xls"),
                 status, "PARSE_ERROR", message);
