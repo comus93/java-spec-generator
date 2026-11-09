@@ -19,19 +19,19 @@
 6. **작성일:** 사용자 지정 날짜 우선, 없으면 **소스 파일시스템 최종 수정일**. Git 수정 날짜 사용 금지. 모듈명 변경은 표제부에만 반영하고 물리 출력 경로에 영향 없음.
 7. **출력:** 소스×등록 모듈별 Excel 1개 생성 시도, 기본 `.xls`, 옵션 `.xlsx`. Java **기본 9시트·정적초기화가 있으면 10시트**, JSP 5시트. `04_처리단계`와 `상세 사양`은 각각 유지한다. 표제부 10항목, 2행 설명 없음, D:F 헤더 회색, 전체 콘텐츠 윤곽선 테두리. 소스행·시작/끝행·처리단계 수·AST 종류/깊이 출력 금지, 상대 경로는 별도 경로 시트 1열만. AI 없이 기계적 DETAIL 표기만 허용한다.
 8. **보안:** 승인된 파일을 읽기 전용 분석. 사용자 소스를 네트워크 전송·콘솔 덤프·로그 전문 출력하지 않는다. 심볼릭 링크/정션으로 소스 범위 밖 파일을 따라가지 않는다. 출력 루트가 소스 내부이면 시작 전에 차단한다.
-9. **검증:** Task마다 **해당 변경 영향만** TDD로 검증하고, 마지막 Task에서만 전체 통합/오프라인/배포 검증. 각 Task는 별도 검토·승인을 받을 수 있도록 독립 완료 조건과 변경 파일이 있다. 실패를 덮거나 테스트를 삭제하지 않는다.
+9. **검증:** Task마다 변경 영향에 해당하는 **필수 기능·데이터 정합성**만 TDD로 검증하고 마지막 Task에서는 핵심 기능 통합 검증을 수행한다. 모든 추가 테스트는 승인된 기능 요구사항이나 사용자 수용 기준에 직접 연결되어야 하며, 오케스트레이터는 하위 에이전트가 작성한 테스트의 필요성을 검토한다. **JDK/Maven 설치·버전 확인, OS 권한, 심볼릭 링크/정션 생성 fixture, 별도 JVM 설치, 네트워크 단절, 의존성 감사, Golden 해시 확인 등 환경·부대 검사는 필수 기능 테스트나 릴리스 차단 조건에서 제외한다.** 실제 기능 실패는 숨기지 않는다.
 10. **기준본 (2026-11-05 사용자 변경 승인):** MCSVR `docs/golden/`의 사용자 편집본 4개에 소스 인스펙션 노출 제거·서식 보강·경로 단일열 및 DETAIL 표기 규칙을 반영한다. 이 4개가 개발 기준본이며, **이전 ChatGPT ZIP 원본 해시는 더 이상 적용하지 않는다**. 확정된 새 파일 SHA-256은 `docs/test/golden-manifest.sha256`을 따른다. 정적 분석은 내부에서 행번호·AST를 사용할 수 있으나 사용자 Excel에는 노출하지 않는다.
 11. **상태:** **사용자 계획 승인 완료(2026-11-05)**. 후속 사용자 지시에 따라 Paseo Orchestrator에 승인 스펙+승인 계획서의 리뷰 및 Task별 개발·검증을 위임한다. 본 문서 승인만으로 Paseo를 실행하거나 구현을 시작하지 않는다.
 
 ## Review Focus
 
-다음은 설계상 실패하기 쉽고 의도적으로 소유 Task의 테스트에서 다뤄야 하는 입력/경계다.
+다음은 사용자에게 제공되는 핵심 기능에 직접 연결되는 입력·출력 경계다. 개발 PC 설정과 테스트 fixture 생성 권한은 검증 범위에 포함하지 않는다.
 
-1. **Windows 폴더 경로·정션·상위/하위 중첩:** Task 03 `JobScannerTest`에서 실경로 밖 이동 차단, 동일 경로 중복 등록 제한, 상하위 독립 순회를 모두 검증.
+1. **출력 경로·상위/하위 중첩:** Task 03 `JobScannerTest`에서 모듈 상대 경로 보존, 출력 폴더가 소스 내부인 잘못된 설정 거부, 동일 폴더 중복 등록 제한, 상하위 모듈 독립 순회를 검증한다. OS 심볼릭 링크·정션 fixture는 만들지 않는다.
 2. **Java AST 복합 분기와 동일 행 중첩 호출:** Task 05 `JavaStepVisitorTest`에서 if/else/loop/try/return 및 동행 호출 순서가 안정적인지 검증.
 3. **레거시 JSP 태그/EL/파싱 실패:** Task 06 `PmdJspAnalyzerTest`에서 form 태그, href 원문, 비표준 태그 허용 범위, 구문 오류가 파일별 `SourceAnalysisException`으로 반환됨을 검증하고 Task 10에서 다음 파일 계속 처리를 검증.
 4. **Excel 수식 주입·셀 길이·무채색/2행:** Task 07 `PoiWorkbookWriterTest`에서 수식처럼 보이는 소스 원문을 문자열로 보존, `.xls` 제약 오류, 색상 값 검사.
-5. **Java 17/오프라인/기존 파일 덮어쓰기:** Task 10·12 `JobRunnerTest` 및 `scripts/verify-release.ps1`에서 Java 17 JVM 실행, 동일 경로 last-write-wins, 네트워크 격리 상태 실행을 검증.
+5. **재실행 덮어쓰기:** Task 10·12에서 동일 경로 Excel의 정상 덮어쓰기(last-write-wins) 및 비대상 파일 보존을 검증한다.
 
 ---
 
@@ -84,12 +84,9 @@ scripts/verify-release.ps1
 # MCSVR Windows PowerShell에서 실행. 아래 경로는 사용자 지정 JDK 설치 위치.
 $env:JAVA_HOME = 'C:\dev\jdk-21'
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-& "$env:JAVA_HOME\bin\java.exe" -version
-& "$env:JAVA_HOME\bin\javac.exe" -version
 # MCSVR 사전 점검에서 확인된 Maven 절대 경로와 세션 PATH 설정.
 $env:PATH = "C:\dev\apache-maven-3.9.16\bin;$env:PATH"
 $mvn = 'C:\dev\apache-maven-3.9.16\bin\mvn.cmd'
-& $mvn -version
 & $mvn -q -DskipTests package
 & $mvn -q test
 java -jar target/spec-generator.jar gui
@@ -106,21 +103,21 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - **최신 기준:** 이번 대화에서 확정한 설계 사양서 표현/서식 정책을 4개 Golden Excel에 반영했다. 실물 해시 목록은 `docs/test/golden-manifest.sha256`; 이전 ZIP 해시 사용 금지. 원본 수정 전 백업은 `.local/golden-backup/2026-11-05-pre-design-revision/`에 보존한다(커밋 제외).
 - **Task 01 재개:** Golden 파일 부재와 표현 규칙 논의는 해소되었다. 사용자가 최신 Golden 내용에 대한 추가 변경을 요청하는 경우만 기준본·manifest를 다시 갱신한다. Task 01 개발 착수 자체는 별도 사용자 지시를 따른다.
 
-## Task 01: Maven 제품 뼈대·JRE 17 게이트·Golden 자산 기준선
+## Task 01: Maven 제품 뼈대·Golden 자산 기준선
 
 **Files**
-- Create: `pom.xml`, `.gitignore`, `src/test/java/com/comus93/specgen/BootstrapTest.java`
-- Authoritative reference (사용자 지정): `docs/golden/{JavaParser_TodoController_ProgramSpec_Grayscale.xlsx,JavaParser_TodoService_ProgramSpec_Grayscale.xlsx,PMD_JSP_todo_ProgramSpec_Grayscale.xlsx,PMD_JSP_list-todos_ProgramSpec_Grayscale.xlsx}`. 이 경로의 최신 파일과 `docs/test/golden-manifest.sha256`이 검증 기준이다. 중복 복사본을 생성하는 경우 원본 및 해시 일치 여부를 반드시 검사한다.
+- Create: `pom.xml`, `.gitignore` (환경·Golden 해시 전용 `BootstrapTest`는 필수 기능 범위에서 제외)
+- Authoritative reference (사용자 지정): `docs/golden/{JavaParser_TodoController_ProgramSpec_Grayscale.xlsx,JavaParser_TodoService_ProgramSpec_Grayscale.xlsx,PMD_JSP_todo_ProgramSpec_Grayscale.xlsx,PMD_JSP_list-todos_ProgramSpec_Grayscale.xlsx}`. 승인된 참고 자산으로 보존하되 파일 존재·manifest 해시 자체를 기능 테스트로 검증하지 않는다.
 - Create: `docs/test/golden-manifest.sha256`, `docs/test/fixtures-provenance.md`, `src/test/resources/fixtures/java/`, `src/test/resources/fixtures/jsp/`, `src/test/resources/fixtures/spring-mvc/`
 
 **Interfaces**
 - Consumes: 승인된 Spec 6, 7, 8, 13장; 사용자가 승인한 **실제 Excel 산출물**.
-- Produces: Maven Java 17 컴파일·JUnit 테스트 실행, 고정 기준 파일과 검증 가능한 해시.
+- Produces: Java 17 대상 Maven 컴파일·JUnit 실행이 가능한 프로젝트 뼈대와 승인된 Golden 참고 자산. 자산 해시는 기능 테스트의 PASS/FAIL 게이트가 아니다.
 
-- [ ] **Step 1: 실패하는 `BootstrapTest.goldenFilesExistWithRecordedSha256()` 작성.** `docs/golden/` 4개 파일의 존재와 최신 `docs/test/golden-manifest.sha256` 해시 일치를 검사하고 누락/불일치 시 명시적 FAIL. 이전 ZIP 원본의 해시를 기준으로 삼지 않는다.
-- [ ] **Step 2: MCSVR에서 `C:\dev\jdk-21\bin\java.exe -version` 및 `C:\dev\jdk-21\bin\javac.exe -version`으로 JDK 21 설치 확인 후, Maven 경로와 실행 가능 여부를 확인한다.** `JAVA_HOME=C:\dev\jdk-21`을 설정하고 `mvn -q -Dtest=BootstrapTest test` RED 확인. 제품 프로젝트 파일이 없어서 실패한 경우 테스트 실패와 환경 미설치를 구분해 기록한다.
-- [ ] **Step 3: Maven 설정과 fixture 반입.** `docs/golden/`의 최신 Golden 4개 및 manifest 해시를 검증한다. 테스트 리소스로 복사할 경우 원본 보존 및 해시 동일성을 보장한다. `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, `exec-maven-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON, SLF4J 로거를 **명시 버전 고정**. 분석기 2종의 API와 Java 17 호환성은 제품 빌드·테스트에서 직접 확인한다. 참고 fixture는 `SpringMvcStepByStep`의 고정 커밋 `ea85bf29e6ce4bdbc62eab06b97ceb66e6f5028f`에서 원문 확보 후 해시·라이선스 검토; 이 외 자작 미니 fixture는 별도 구분. Golden은 승인된 업로드 **실물**과 해시를 일치시켜서만 반입.
-- [ ] **Step 4: `mvn -q -Dtest=BootstrapTest test` → PASS, `mvn -q -DskipTests package` → PASS 확인.** 기준 Excel을 확보할 수 없으면 RED 상태를 숨기지 말고 Golden 게이트를 BLOCKED로 기록하고 해당 기준본 테스트가 필요한 Task의 통과를 주장하지 않는다.
+- [ ] **Step 1: Maven/JUnit 프로젝트 뼈대와 기능 테스트 구조를 준비한다.** Golden 파일 존재·SHA-256만 확인하는 단독 테스트는 필수 기능 테스트나 릴리스 판정에 사용하지 않는다.
+- [ ] **Step 2: 개발에 필요한 Maven 컴파일·테스트 명령을 준비한다.** JDK·Maven 설치 위치나 버전 출력은 작업 준비 사항이지 제품의 테스트 항목이나 수용 기준이 아니다.
+- [ ] **Step 3: Maven 설정과 기능 테스트 fixture 반입.** `maven-compiler-plugin` `release=17`, `maven-surefire-plugin`, JUnit Jupiter, JavaParser `3.28.2`, PMD JSP `7.29.0`, POI HSSF/XSSF, Jackson JSON 등 필요한 라이브러리 버전을 명시한다. 승인된 Golden 4종과 `SpringMvcStepByStep` fixture는 참고 자산으로 보존하고 실제 Java/JSP 기능 테스트의 입력으로 활용한다. 별도 자산 해시·라이선스 감사 테스트를 필수 게이트에 추가하지 않는다.
+- [ ] **Step 4: `mvn -q -DskipTests package` → PASS 확인.** 이후 각 Task에서 실제 기능 입력과 기대 결과로 테스트한다. Golden 자산 해시·개발 PC 설정 때문에 기능 테스트를 BLOCKED/FAIL 처리하지 않는다.
 - [ ] **Step 5: 변경 영향 테스트·스테이징 확인 후 commit.** `git add pom.xml .gitignore src/test docs/test`; `git diff --cached --check`; `git commit -m "build: bootstrap Java 17 generator and golden fixtures"`. 임시 개발 파일을 add하지 않는다.
 
 ## Task 02: 공통 설정 모델·JSON 계약·GUI 기본 행 모델
@@ -149,10 +146,10 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - Consumes: Task 02 `JobConfig`, `ModuleSelection`, `SourceMode`, `OutputFormat`.
 - Produces: `JobScanner.plan(JobConfig) -> List<SourceJob>`, `SourceJob(module,sourceFile,relativePath,outputFile)`. 스캐너와 GUI 목록은 동일 경로 중복 방지만 공유하고, 상하위 다른 폴더는 각각 유지.
 
-- [ ] **Step 1: `JobScannerTest` 작성.** `module1/controller/A.java` → `output/module1/controller/A.xls`, GUI 표시 모듈명 변경은 경로 불변, Java 모드 JSP 제외, JSP 모드 Java 제외, 상위+하위 등록은 같은 물리 소스 **각 모듈당 별개 작업**, 동일 폴더 경로 중복만 제거, 출력 루트의 소스 내부 위치 차단, symlink/junction 외부 추적 방지.
+- [ ] **Step 1: `JobScannerTest` 작성.** `module1/controller/A.java` → `output/module1/controller/A.xls`, 모듈 표시명 변경 시 물리 경로 불변, Java/JSP 모드 분리, 상위·하위 폴더를 각각 별도 모듈로 처리, 동일 폴더 중복 등록 제한, 출력 폴더가 소스 내부에 있는 잘못된 설정 거부를 검증한다. 관리자 권한이 필요한 심볼릭 링크·정션 fixture는 만들지 않는다.
 - [ ] **Step 2: `mvn -q -Dtest=JobScannerTest test` RED 확인.**
 - [ ] **Step 3: `JobScanner.plan`과 `SourceJob` 구현.** 모듈 순서는 입력 List 순서 유지; 각 모듈 안에서는 상대 경로 **문자열 기준 안정 정렬**. `Files.walkFileTree` 기본 링크 비추적, 실제 경로의 선택 루트 이탈 차단. 출력 파일은 `sourceFile.getFileName()` 확장자만 교체. 출력 폴더 존재 여부만으로 차단하지 않는다.
-- [ ] **Step 4: 해당 스캐너 테스트 PASS.** Windows 경로 대소문자·Junction 테스트는 Windows 실제 파일시스템에서 별도 검증하고 OS 권한 때문에 fixture 작성 불가 시 미검증으로 기록.
+- [ ] **Step 4: 필수 경로 매핑·모듈 중복 처리·출력 위치 보호 테스트 PASS.** Windows 심볼릭 링크·정션 생성 권한이나 별도 OS 환경 검사는 수행하지 않는다.
 - [ ] **Step 5: `git add src/main/java/com/comus93/specgen/scan src/test/java/com/comus93/specgen/scan` → `git commit -m "feat: scan modules and preserve source hierarchy"`.**
 
 ## Task 04: JavaParser 선언/메서드/Import 원문 사실 추출
@@ -294,7 +291,7 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 
 ## Task 12: 배포 패키지·의존성 보안·핵심 동작 통합 검증
 
-**2026-11-06 검증 정책 변경:** 승인된 Design Spec §13의 핵심 동작 검증을 우선한다. Golden 4종과 manifest는 보존·참고만 하며 Golden 전체 셀/문자열/행 위치/공란/스타일 차이는 FAIL 게이트가 아니다. 실제 소스 기반 파싱 정확성, 필수 시트·주요 데이터, Excel 재열기, CLI/GUI 실행, 파일별 실패 격리, 원본 보존, 출력 덮어쓰기·비대상 파일 보존을 PASS/FAIL로 평가한다. Java 17 실 JVM·오프라인·보안 검증은 별도 배포 게이트로 분리한다. 이미 통과한 무관한 테스트를 반복하지 않고 변경 영향만 재검증한다.
+**2026-11-09 필수 기능 검증 범위 정리:** 승인된 Design Spec §13 중 핵심 기능의 수용 기준을 우선한다. Java/JSP 사실 추출, Excel 필수 시트·주요 값·파일 재열기, CLI/GUI 기본 실행, 파일별 실패 격리, 원본 보존, 출력 덮어쓰기·비대상 파일 보존만 PASS/FAIL로 평가한다. Golden 4종·manifest는 참고 자산으로 보존하며 전체 셀/스타일 비교·자산 해시 확인은 기능 게이트가 아니다. 별도 Java 17 JVM 설치, 네트워크 단절, Windows 권한·심볼릭 링크·정션 fixture 생성, 의존성 보안·라이선스 감사 등은 필수 기능·릴리스 테스트에 포함하지 않는다. 변경 영향 외 테스트를 반복하지 않는다.
 
 **Files**
 - Modify: `pom.xml` (Shade 실행 JAR, Main-Class, 서비스 리소스 병합)
@@ -308,11 +305,11 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 - Consumes: Task 01~11 산출물과 실제 Golden Sample 4종.
 - Produces: `target/spec-generator.jar` 한 파일의 Java 17+ 실행형, Windows `jpackage` app-image에 GUI 및 CLI 런처, 릴리스 검증 기록.
 
-- [ ] **Step 1: `GoldenSampleTest`와 `verify-release.ps1`의 기능 게이트 정비.** Golden 4종의 존재·SHA-256은 자산 보존 목적으로 확인하되 출력 결과와 셀/서식 비교하지 않는다. Java/JSP 실제 fixture에서 핵심 사실(메서드·호출·처리단계·필드·EL·링크) 추출과 필수 시트·주요 데이터·상대 경로·내부 AST 정보 비노출을 검증한다. Excel 파일을 직접 다시 열어 읽을 수 있는지 확인한다. 날짜는 지정 override 및 소스 메타데이터 정책으로 검증하고 Golden의 날짜와 비교하지 않는다.
+- [ ] **Step 1: `GoldenSampleTest`와 `verify-release.ps1`의 기능 게이트 정비.** Java/JSP 실제 fixture에서 메서드·호출·처리 단계·필드·EL·링크 추출과 필수 시트·주요 값·상대 경로·내부 AST 정보 비노출을 검증한다. 생성한 Excel의 재열기 및 사용자 지정/소스 수정일 정책을 검증한다. Golden 존재·SHA-256·셀/스타일 완전 일치 검사는 기능 PASS/FAIL에 사용하지 않는다.
 - [ ] **Step 2: 핵심 동작 테스트의 실패 케이스를 확인하고 수정 후 PASS를 확보한다.** Golden 파일 부재나 출력 형식 차이는 핵심 동작 테스트를 BLOCKED/FAIL로 만들지 않는다. 참고 자산의 무결성 문제는 별도 기록한다.
-- [ ] **Step 3: Maven Shade(`minimizeJar=false`, 서비스 로더 리소스 유지)와 `jpackage --type app-image`를 설정.** JDK21 이미지에 자체 런타임 포함, GUI 런처와 별도 CLI 런처 생성. `dependency:tree`, 고정 의존성·라이선스·SBOM 및 `Get-FileHash` SHA-256을 `docs/security/dependency-inventory.md`에 기록. 전이 의존성·JRE17 classfile 호환성 검증 후 버전 최종 고정, 취약점 발견 시 계획서/스펙 변경관리.
-- [ ] **Step 4: 기능 및 배포 게이트 분리 검증.** 기능: 변경 영향 테스트와 `mvn -q clean verify`, Java/JSP CLI·GUI 실행, Excel 재열기, 파싱 정확성, 오류 격리, 반복 덮어쓰기 및 비대상 파일 보존. Golden 셀/스타일 전체 비교와 차이 건수 FAIL 판정은 실행하지 않는다. 배포: **실제 Java 17 JVM**의 `java -jar target/spec-generator.jar generate --config ...`, Windows 실행 이미지 GUI/CLI, 네트워크 차단 환경, 의존성 보안/라이선스를 별도 PASS/FAIL/BLOCKED로 기록한다. 결과는 `docs/operations/README.md`에 구분하여 남긴다.
-- [ ] **Step 5: `git diff --check`, 테스트 증빙 점검, 변경 파일만 커밋한다.** 핵심 동작 PASS와 배포 환경 PASS/FAIL/BLOCKED를 구분해 보고한다. Golden 형식 차이는 릴리스 차단 사유가 아니며, 미검증 Java 17/오프라인/보안 게이트를 통과했다고 선언하지 않는다.
+- [ ] **Step 3: Maven Shade(`minimizeJar=false`, 서비스 로더 리소스 유지)와 `jpackage --type app-image`를 설정한다.** Windows 배포 이미지에 런타임, GUI·CLI 런처를 포함한다. 의존성·라이선스·자산 해시는 필요시 운영 문서에 기록하되 별도 감사·버전 설치 환경 검사를 필수 테스트에 추가하지 않는다.
+- [ ] **Step 4: 핵심 기능 통합 검증.** 변경 영향 테스트와 필요시 필수 기능 통합 테스트를 실행하고 빌드된 JAR로 Java/JSP CLI 및 GUI 기본 진입, Excel 재열기, 사실 추출 정확성, 오류 격리, 덮어쓰기·비대상 파일 보존을 확인한다. 별도 JRE 설치, 네트워크 단절, 관리자 권한, 링크 fixture 생성, 의존성·해시 감사용 환경은 수용 테스트에 포함하지 않는다. 결과는 `docs/operations/README.md`에 요약한다.
+- [ ] **Step 5: `git diff --check`, 핵심 기능 테스트 증빙 점검 후 변경 파일만 커밋한다.** 기능 PASS/FAIL과 실제 미검증 범위를 구분하여 보고하고 환경 검사 미실시를 기능 실패로 간주하지 않는다.
 
 ## Coverage Check: Spec → Task
 
@@ -326,9 +323,9 @@ java -jar target/spec-generator.jar generate --config "C:\work\job.json"
 | 8 JSP 태그/EL/링크 이벤트·5시트 | 06, 09 |
 | 9 GUI/CLI 공통 실행 | 02, 10, 11 |
 | 10 경로·로그·네트워크·원본 보호 | 03, 04, 06, 07, 10, 12 |
-| 11 JRE17·런타임 동봉 배포 | 01, 12 |
+| 11 런타임 동봉 배포 기능(별도 JVM 환경 검증 제외) | 01, 12 |
 | 12 파일 실패 격리·결정론·오류 | 03, 04, 06, 07, 10 |
-| 13 AC-01 ~ AC-16 / Golden | 01~12, 종합 12 |
+| 13 핵심 기능 수용 AC-01~AC-10·AC-14~AC-16 | 01~12, 종합 12 |
 | 15 사용자 승인된 JS 제외·작성일·덮어쓰기·중첩 폴더 | 02, 03, 06, 08, 09, 10, 12 |
 
 ## Paseo Review / Delegation Handoff (계획 승인 **후**)
