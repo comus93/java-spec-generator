@@ -14,10 +14,8 @@ import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.apache.poi.ss.usermodel.Cell;
@@ -49,12 +47,6 @@ import com.comus93.specgen.runner.RunSummary;
  */
 class GoldenSampleTest {
 
-    private static final List<String> GOLDEN_FILES = List.of(
-            "docs/golden/JavaParser_TodoController_ProgramSpec_Grayscale.xlsx",
-            "docs/golden/JavaParser_TodoService_ProgramSpec_Grayscale.xlsx",
-            "docs/golden/PMD_JSP_todo_ProgramSpec_Grayscale.xlsx",
-            "docs/golden/PMD_JSP_list-todos_ProgramSpec_Grayscale.xlsx");
-
     private static final List<String> JAVA_CONTROLLER_SHEETS = List.of(
             "01_표제부", "02_OBJ정의", "03_메서드정의", "04_처리단계", "05_호출관계",
             "06_타입참조", "07_Import", "08_원본경로", "상세 사양");
@@ -69,37 +61,6 @@ class GoldenSampleTest {
 
     @TempDir
     Path tempDir;
-
-    @Test
-    void goldenAssetStatusIsInformationalAndDoesNotBlockFunction() throws Exception {
-        Path root = projectRoot();
-        Path manifest = root.resolve("docs/test/golden-manifest.sha256");
-        Map<String, String> recorded = new LinkedHashMap<>();
-        if (Files.isRegularFile(manifest)) {
-            for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
-                String clean = line.strip();
-                if (clean.isEmpty() || clean.startsWith("#")) {
-                    continue;
-                }
-                String[] parts = clean.split("\\s+", 2);
-                if (parts.length == 2) {
-                    recorded.put(parts[1].strip(), parts[0].toLowerCase(Locale.ROOT));
-                }
-            }
-        }
-        for (String relative : GOLDEN_FILES) {
-            Path asset = root.resolve(relative);
-            if (!Files.isRegularFile(asset)) {
-                System.out.println("[ASSET] MISSING " + relative);
-                continue;
-            }
-            String actual = sha256(asset);
-            String expected = recorded.get(relative);
-            System.out.println("[ASSET] " + (expected == null ? "UNRECORDED" : expected.equals(actual)
-                    ? "OK " + relative : "MISMATCH " + relative));
-        }
-        // Informational only: no assertion is allowed to turn asset state into a functional failure.
-    }
 
     @Test
     void javaFixturesProduceRequiredSheetsAndSourceDerivedFacts() throws Exception {
