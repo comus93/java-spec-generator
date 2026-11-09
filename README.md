@@ -4,9 +4,9 @@
 
 Java Program Spec Generator helps developers, maintainers, and modernization teams document existing Java/JSP applications without executing their source code. It statically analyzes program structure and produces consistent, reviewable Excel workbooks that can serve as a starting point for technical documentation, application assessment, and legacy system analysis.
 
-> **Current release:** [v1.0.0-rc.6 (pre-release)](https://github.com/comus93/java-spec-generator/releases/tag/v1.0.0-rc.6)  
-> **Recommended download:** [Executable JAR](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.6/spec-generator-v1.0.0-rc.6.jar) · [Windows x64 package (v1.0.0-rc.1, excludes later JSP fixes)](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.1/SpecGenerator-Windows-x64-v1.0.0-rc.1.zip)  
-> **Release source code:** [`v1.0.0-rc.6` tag](https://github.com/comus93/java-spec-generator/tree/v1.0.0-rc.6)
+> **Current release:** [v1.0.0-rc.7 (pre-release)](https://github.com/comus93/java-spec-generator/releases/tag/v1.0.0-rc.7)  
+> **Recommended download:** [Executable JAR](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.7/spec-generator-v1.0.0-rc.7.jar) · [Windows x64 package (v1.0.0-rc.1, excludes later JSP fixes)](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.1/SpecGenerator-Windows-x64-v1.0.0-rc.1.zip)  
+> **Release source code:** [`v1.0.0-rc.7` tag](https://github.com/comus93/java-spec-generator/tree/v1.0.0-rc.7)
 
 ## Why this project exists
 
@@ -29,6 +29,10 @@ The output describes facts identifiable through static analysis. It does **not**
 | Organization | Preserves relative source paths in the output and supports multiple modules with system, subsystem, and module metadata. |
 | Interfaces | Provides a configurable **CLI** for repeatable jobs and a **desktop GUI** for interactive use. |
 | Deployment | Offers a standalone executable JAR and a Windows x64 package with a bundled Java runtime. |
+
+## JSP recovered workbook warning cleanup (v1.0.0-rc.7)
+
+For partially recovered JSPs, two redundant English warning rows were removed from the generated Excel `상세 사양` sheet. The run's **WARNING** status, full source-anchored recovery diagnostics in `<outputDirectory>/<system>/logs/`, and the actual extracted fields are preserved. The targeted JSP mapper tests passed **4/4**. A real rc.7 JAR mixed-JSP smoke produced **2 SUCCESS, 1 WARNING, 1 FAILED** and confirmed both messages were absent from the recovered XLSX while the log retained the warning and recovery details.
 
 ## Long Java specifications and editable default output (v1.0.0-rc.6)
 
@@ -81,26 +85,26 @@ Source analysis and workbook generation run locally. Input source files are read
 
 **Requirements:** Java 17 or newer. The release was built for Java 17 bytecode compatibility and independently executed on JDK 21.
 
-1. Download the [JAR](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.6/spec-generator-v1.0.0-rc.6.jar).
-2. Download the [Java job template](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.6/sample-java-job.json) or [JSP job template](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.6/sample-jsp-job.json).
+1. Download the [JAR](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.7/spec-generator-v1.0.0-rc.7.jar).
+2. Download the [Java job template](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.7/sample-java-job.json) or [JSP job template](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.7/sample-jsp-job.json).
 3. Edit the template to specify an existing source folder and an output directory **outside** that source folder.
 4. Run the generator from a terminal.
 
 ```bash
 java -version
-java -jar spec-generator-v1.0.0-rc.6.jar generate --config sample-java-job.json
+java -jar spec-generator-v1.0.0-rc.7.jar generate --config sample-java-job.json
 ```
 
 For JSP files, run a separate job using `sample-jsp-job.json`:
 
 ```bash
-java -jar spec-generator-v1.0.0-rc.6.jar generate --config sample-jsp-job.json
+java -jar spec-generator-v1.0.0-rc.7.jar generate --config sample-jsp-job.json
 ```
 
 To open the graphical interface:
 
 ```bash
-java -jar spec-generator-v1.0.0-rc.6.jar gui
+java -jar spec-generator-v1.0.0-rc.7.jar gui
 ```
 
 The executable JAR requires no Maven installation. The GUI requires a desktop environment. Windows paths in JSON must use escaped backslashes (for example, `C:\\Project\\src\\main\\java`).
@@ -111,9 +115,9 @@ The executable JAR requires no Maven installation. The GUI requires a desktop en
 2. Extract the **entire archive**; retain the accompanying `app` and `runtime` directories.
 3. Run `SpecGenerator/SpecGeneratorGUI.exe`, or use `SpecGenerator/SpecGenerator.exe` for CLI jobs.
 
-The Windows package includes its own Java runtime. **Note:** The Windows ZIP remains at v1.0.0-rc.1 and does not include later JSP parser/recovery/logging or system/mode output layout changes. Use the v1.0.0-rc.6 JAR for the new behavior.
+The Windows package includes its own Java runtime. **Note:** The Windows ZIP remains at v1.0.0-rc.1 and does not include later JSP parser/recovery/logging or system/mode output layout changes. Use the v1.0.0-rc.7 JAR for the new behavior.
 
-For full instructions, configuration fields, sample commands, and exit codes, see the **[Release README](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.6/README.md)**.
+For full instructions, configuration fields, sample commands, and exit codes, see the **[Release README](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.7/README.md)**.
 
 ## Example job configuration
 
@@ -154,7 +158,7 @@ The released source is organized into scanner, parser, structured-facts, mapper,
 
 ## Verification and release status
 
-**v1.0.0-rc.6 is a pre-release**, not a general-availability or production-certified release.
+**v1.0.0-rc.7 is a pre-release**, not a general-availability or production-certified release.
 
 - **Output layout patch (v1.0.0-rc.5): 89/89 targeted tests passed, 0 failed, 0 skipped on an AgentDock-run MCSVR retest.** The original OMP-run test process skipped three Windows symbolic-link cases because of insufficient symlink privileges; all three passed when rerun with an authorized AgentDock execution context. JAR smoke verified identical Java/JSP module and source names generated separate Excel workbooks plus shared system-level logs.
 - The **v1.0.0-rc.4 JSP recovery** was previously validated with 43 focused tests and a mixed valid/recovered/failed batch.
@@ -163,10 +167,10 @@ The released source is organized into scanner, parser, structured-facts, mapper,
 - The output structure and source-to-workbook mapping were checked; the Windows packaged CLI was also smoke-tested without Java on `PATH`.
 - End-user GUI acceptance testing, an actual Java 17 runtime execution check, non-Windows validation, customer-specific legacy JSP coverage, and security/vulnerability assessments remain outside the completed verification scope.
 
-See the [previous baseline E2E report](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.1/E2E_REPORT.md) and [current release notes](https://github.com/comus93/java-spec-generator/releases/tag/v1.0.0-rc.6) for details.
+See the [previous baseline E2E report](https://github.com/comus93/java-spec-generator/releases/download/v1.0.0-rc.1/E2E_REPORT.md) and [current release notes](https://github.com/comus93/java-spec-generator/releases/tag/v1.0.0-rc.7) for details.
 
 ## Repository and versioning note
 
-The **default `main` branch and the tagged release are not yet the same implementation baseline**. For the verified release source, use the [`v1.0.0-rc.6` tag](https://github.com/comus93/java-spec-generator/tree/v1.0.0-rc.6) rather than assuming the current `main` branch reproduces the published binaries.
+The **default `main` branch and the tagged release are not yet the same implementation baseline**. For the verified release source, use the [`v1.0.0-rc.7` tag](https://github.com/comus93/java-spec-generator/tree/v1.0.0-rc.7) rather than assuming the current `main` branch reproduces the published binaries.
 
 The tool generates documentation based on static source facts. Review the generated specifications before using them in critical engineering or business decisions.
