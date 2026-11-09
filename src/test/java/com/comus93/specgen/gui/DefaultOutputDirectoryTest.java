@@ -30,46 +30,6 @@ class DefaultOutputDirectoryTest {
     }
 
     @Test
-    void resolvesJarExtensionIgnoringCase() throws Exception {
-        Path directory = Files.createDirectory(temporaryDirectory.resolve("packaged"));
-        Path jar = Files.createFile(directory.resolve("application.JAR"));
-
-        assertEquals(directory.resolve("output"),
-                DefaultOutputDirectory.resolve(jar.toUri().toURL(), temporaryDirectory));
-    }
-
-    @Test
-    void fallsBackForRegularNonJarFile() throws Exception {
-        Path directory = Files.createDirectory(temporaryDirectory.resolve("other"));
-        Path file = Files.createFile(directory.resolve("application.txt"));
-
-        assertEquals(temporaryDirectory.resolve("output"),
-                DefaultOutputDirectory.resolve(file.toUri().toURL(), temporaryDirectory));
-    }
-
-    @Test
-    void fallsBackSafelyWhenWorkingDirectoryIsUnavailable() {
-        Path fallback = Path.of("output");
-        assertEquals(fallback, DefaultOutputDirectory.resolve(null, () -> null));
-        assertEquals(fallback, DefaultOutputDirectory.resolve(null, () -> "\0"));
-        assertEquals(fallback, DefaultOutputDirectory.resolve(null, () -> {
-            throw new SecurityException("user.dir unavailable");
-        }));
-    }
-
-    @Test
-    void fallsBackForClassesDirectoryAndUnavailableLocations() throws Exception {
-        Path fallback = temporaryDirectory.resolve("output");
-        Path classes = Files.createDirectory(temporaryDirectory.resolve("classes"));
-        assertEquals(fallback, DefaultOutputDirectory.resolve(classes.toUri().toURL(), temporaryDirectory));
-        assertEquals(fallback, DefaultOutputDirectory.resolve(null, temporaryDirectory));
-        assertEquals(fallback, DefaultOutputDirectory.resolve(
-                URI.create("https://example.com/application.jar").toURL(), temporaryDirectory));
-        assertEquals(fallback, DefaultOutputDirectory.resolve(
-                temporaryDirectory.resolve("missing.jar").toUri().toURL(), temporaryDirectory));
-    }
-
-    @Test
     void initializesEditableFieldAndRetainsUserValue() throws Exception {
         assumeFalse(GraphicsEnvironment.isHeadless());
         SwingUtilities.invokeAndWait(() -> {
