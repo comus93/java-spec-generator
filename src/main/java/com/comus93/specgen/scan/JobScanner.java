@@ -43,10 +43,30 @@ public final class JobScanner {
             }
         }
 
+        Path systemRoot = outputRoot.resolve(config.system());
+        Path modeRoot = systemRoot.resolve(config.mode().name().toLowerCase(Locale.ROOT));
+        validateDestination(systemRoot, outputRoot, realOutputRoot, modules);
+        validateDestination(modeRoot, outputRoot, realOutputRoot, modules);
+        Path logs = systemRoot.resolve("logs");
+        if (isExistingReparsePoint(logs)) {
+            // RunLog owns the final logs component and reports failures to open it.
+            Path realLogs = realPathAllowingMissing(systemRoot).resolve("logs");
+            for (ModuleRoot module : modules) {
+                if (isWithin(realLogs, module.realRoot())) {
+                    throw new IllegalArgumentException("Output path is inside a source folder: " + logs);
+                }
+            }
+        } else {
+            validateDestination(logs, outputRoot, realOutputRoot, modules);
+        }
+
         List<SourceJob> jobs = new ArrayList<>();
         for (ModuleRoot module : modules) {
-            List<SourceJob> moduleJobs = scanModule(module, config.mode(), config.outputFormat(), outputRoot,
-                    realOutputRoot);
+            Path moduleName = module.realRoot().getFileName();
+            Path moduleOutput = moduleName == null ? modeRoot : modeRoot.resolve(moduleName);
+            validateDestination(moduleOutput, outputRoot, realOutputRoot, modules);
+            List<SourceJob> moduleJobs = scanModule(module, config.mode(), config.outputFormat(), moduleOutput,
+                    outputRoot, realOutputRoot, modules);
             moduleJobs.sort(Comparator.comparing(job -> job.relativePath().toString()));
             jobs.addAll(moduleJobs);
         }
@@ -67,11 +87,9 @@ public final class JobScanner {
     }
 
     private static List<SourceJob> scanModule(ModuleRoot module, SourceMode mode, OutputFormat format,
-            Path outputRoot, Path realOutputRoot) {
+            Path outputModuleRoot, Path outputRoot, Path realOutputRoot, List<ModuleRoot> modules) {
         List<SourceJob> jobs = new ArrayList<>();
         Path root = module.realRoot();
-        Path moduleFolderName = root.getFileName();
-        Path outputModuleRoot = moduleFolderName == null ? outputRoot : outputRoot.resolve(moduleFolderName);
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {
                 @Override
@@ -104,7 +122,7 @@ public final class JobScanner {
                     Path outputFile = outputModuleRoot
                             .resolve(relativePath)
                             .resolveSibling(excelFileName(fileName, format));
-                    validateOutputFile(outputFile, realOutputRoot);
+                    validateOutputFile(outputFile, outputRoot, realOutputRoot, modules);
                     jobs.add(new SourceJob(module.selection(), file, relativePath, outputFile));
                     return FileVisitResult.CONTINUE;
                 }
@@ -116,17 +134,35 @@ public final class JobScanner {
         return jobs;
     }
 
-    private static void validateOutputFile(Path outputFile, Path realOutputRoot) {
+    private static void validateOutputFile(Path outputFile, Path outputRoot, Path realOutputRoot,
+            List<ModuleRoot> modules) {
         Path parent = outputFile.getParent();
         if (parent == null) {
             throw new IllegalArgumentException("Output file has no parent directory: " + outputFile);
         }
-        Path realParent = realPathAllowingMissing(parent);
-        if (!isWithin(realParent, realOutputRoot)) {
-            throw new IllegalArgumentException("Output path escapes output directory: " + outputFile);
-        }
+        validateDestination(parent, outputRoot, realOutputRoot, modules);
         if (isExistingReparsePoint(outputFile)) {
             throw new IllegalArgumentException("Output file is a link or reparse point: " + outputFile);
+        }
+    }
+
+    private static void validateDestination(Path destination, Path outputRoot, Path realOutputRoot,
+            List<ModuleRoot> modules) {
+        Path current = outputRoot;
+        for (Path segment : outputRoot.relativize(destination)) {
+            current = current.resolve(segment);
+            if (isExistingReparsePoint(current)) {
+                throw new IllegalArgumentException("Output path is a link or reparse point: " + current);
+            }
+            Path realDestination = realPathAllowingMissing(current);
+            if (!isWithin(realDestination, realOutputRoot)) {
+                throw new IllegalArgumentException("Output path escapes output directory: " + current);
+            }
+            for (ModuleRoot module : modules) {
+                if (isWithin(realDestination, module.realRoot())) {
+                    throw new IllegalArgumentException("Output path is inside a source folder: " + current);
+                }
+            }
         }
     }
 
@@ -178,7 +214,7 @@ public final class JobScanner {
         Path absolute = path.toAbsolutePath().normalize();
         Path existing = absolute;
         Deque<Path> missing = new ArrayDeque<>();
-        while (existing != null && !Files.exists(existing)) {
+        while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
             Path name = existing.getFileName();
             if (name == null) {
                 return absolute;

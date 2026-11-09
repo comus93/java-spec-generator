@@ -186,7 +186,7 @@ class GoldenSampleTest {
         String goodHash = sha256(good);
         Path output = tempDir.resolve("repeat-output");
         Path keep = output.resolve("keep.txt");
-        Path other = output.resolve("module").resolve("Other.xls");
+        Path other = output.resolve("SYS1").resolve("java").resolve("module").resolve("Other.xls");
         write(keep, "keep");
         write(other, "sentinel");
         String otherHash = sha256(other);
@@ -199,8 +199,8 @@ class GoldenSampleTest {
                 .filter(result -> result.sourceFile().getFileName().toString().equals("Bad.java"))
                 .findFirst().orElseThrow();
         assertEquals(FileResult.FileStatus.FAILED, failed.status());
-        assertTrue(Files.isRegularFile(output.resolve("module").resolve("Good.xlsx")));
-        assertFalse(Files.exists(output.resolve("module").resolve("Bad.xlsx")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS1").resolve("java").resolve("module").resolve("Good.xlsx")));
+        assertFalse(Files.exists(output.resolve("SYS1").resolve("java").resolve("module").resolve("Bad.xlsx")));
 
         RunSummary second = run(SourceMode.JAVA, module, output, "module");
         assertEquals(1, second.successCount());

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -17,6 +18,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
@@ -60,8 +62,8 @@ class JobRunnerTest {
         assertEquals(List.of(2, 2), events.stream().map(ProgressEvent::total).toList());
         assertEquals(List.of(FileResult.FileStatus.SUCCESS, FileResult.FileStatus.SUCCESS),
                 events.stream().map(ProgressEvent::status).toList());
-        assertTrue(Files.isRegularFile(output.resolve("first").resolve("A.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("second").resolve("B.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/java/first/A.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/java/second/B.xls")));
     }
 
     @Test
@@ -107,9 +109,9 @@ class JobRunnerTest {
                 summary.results().stream().map(FileResult::status).toList());
         assertEquals(List.of(1, 2, 3),
                 events.stream().map(ProgressEvent::completed).toList());
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
-        assertFalse(Files.exists(output.resolve("jsp").resolve("02-invalid.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("03-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/jsp/jsp/01-valid.xls")));
+        assertFalse(Files.exists(output.resolve("SYS/jsp/jsp/02-invalid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/jsp/jsp/03-valid.xls")));
     }
 
     @Test
@@ -142,10 +144,10 @@ class JobRunnerTest {
                 FileResult.FileStatus.WARNING, FileResult.FileStatus.FAILED, FileResult.FileStatus.SUCCESS);
         assertEquals(statuses, summary.results().stream().map(FileResult::status).toList());
         assertEquals(statuses, events.stream().map(ProgressEvent::status).toList());
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("02-partial.xls")));
-        assertFalse(Files.exists(output.resolve("jsp").resolve("03-invalid.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("04-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/jsp/jsp/01-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/jsp/jsp/02-partial.xls")));
+        assertFalse(Files.exists(output.resolve("SYS/jsp/jsp/03-invalid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/jsp/jsp/04-valid.xls")));
 
         FileResult recovered = summary.results().get(1);
         assertEquals(SourceAnalysisException.PARSE_ERROR, recovered.errorCode());
@@ -153,7 +155,7 @@ class JobRunnerTest {
         FileResult failed = summary.results().get(2);
         assertEquals(SourceAnalysisException.PARSE_ERROR, failed.errorCode());
         assertTrue(failed.message().contains("Source excerpt (original JSP)"), failed.message());
-        Path logs = output.resolve("logs");
+        Path logs = output.resolve("SYS").resolve("logs");
         assertTrue(Files.isDirectory(logs));
         try (var paths = Files.walk(logs)) {
             List<String> logContents = paths.filter(Files::isRegularFile).map(path -> {
@@ -186,10 +188,82 @@ class JobRunnerTest {
         assertEquals(FileResult.FileStatus.FAILED, summary.results().get(0).status());
         assertEquals(SourceAnalysisException.PARSE_ERROR, summary.results().get(0).errorCode());
         assertEquals(FileResult.FileStatus.SUCCESS, summary.results().get(1).status());
-        assertFalse(Files.exists(output.resolve("mixed").resolve("Bad.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("mixed").resolve("Good.xls")));
+        assertFalse(Files.exists(output.resolve("SYS/java/mixed/Bad.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/java/mixed/Good.xls")));
         assertEquals(List.of(FileResult.FileStatus.FAILED, FileResult.FileStatus.SUCCESS),
                 events.stream().map(ProgressEvent::status).toList());
+    }
+
+    @Test
+    void separatesJavaAndJspWorkbooksAndLogsBySystem() throws IOException {
+        Path module = tempDir.resolve("sources").resolve("physical-module");
+        Path javaSource = write(module.resolve("nested").resolve("Same.java"),
+                "class Same { void javaOnlyMethod() {} }");
+        Path jspSource = write(module.resolve("nested").resolve("Same.jsp"),
+                "<html><body><a href=\"/jsp-only\">JspOnlyLink</a></body></html>");
+        String javaHash = sha256(javaSource);
+        String jspHash = sha256(jspSource);
+        Path output = tempDir.resolve("output");
+        String system = "시스템";
+        String otherSystem = "다른시스템";
+        ModuleSelection selected = new ModuleSelection(module, system, "display-module");
+        ModuleSelection otherSelected = new ModuleSelection(module, otherSystem, "display-module");
+        JobConfig javaConfig = new JobConfig(SourceMode.JAVA, system, "author", null, "program",
+                "overview", output, OutputFormat.XLS, List.of(selected));
+        JobConfig jspConfig = new JobConfig(SourceMode.JSP, system, "author", null, "program",
+                "overview", output, OutputFormat.XLS, List.of(selected));
+        JobConfig otherConfig = new JobConfig(SourceMode.JAVA, otherSystem, "author", null, "program",
+                "overview", output, OutputFormat.XLS, List.of(otherSelected));
+
+        RunSummary javaRun = new JobRunner().run(javaConfig, event -> { });
+        RunSummary jspRun = new JobRunner().run(jspConfig, event -> { });
+        RunSummary otherRun = new JobRunner().run(otherConfig, event -> { });
+
+        assertEquals(1, javaRun.successCount());
+        assertEquals(1, jspRun.successCount());
+        assertEquals(1, otherRun.successCount());
+        Path javaWorkbook = output.resolve(system).resolve("java").resolve("physical-module")
+                .resolve("nested").resolve("Same.xls");
+        Path jspWorkbook = output.resolve(system).resolve("jsp").resolve("physical-module")
+                .resolve("nested").resolve("Same.xls");
+        Path otherWorkbook = output.resolve(otherSystem).resolve("java").resolve("physical-module")
+                .resolve("nested").resolve("Same.xls");
+        assertEquals(javaWorkbook, javaRun.results().get(0).outputFile());
+        assertEquals(jspWorkbook, jspRun.results().get(0).outputFile());
+        assertEquals(otherWorkbook, otherRun.results().get(0).outputFile());
+        assertTrue(Files.isRegularFile(javaWorkbook));
+        assertTrue(Files.isRegularFile(jspWorkbook));
+        assertTrue(Files.isRegularFile(otherWorkbook));
+        assertTrue(workbookContains(javaWorkbook, "javaOnlyMethod"));
+        assertFalse(workbookContains(javaWorkbook, "JspOnlyLink"));
+        assertTrue(workbookContains(jspWorkbook, "JspOnlyLink"));
+        assertFalse(workbookContains(jspWorkbook, "javaOnlyMethod"));
+        assertTrue(workbookContains(otherWorkbook, "javaOnlyMethod"));
+        Path logs = output.resolve(system).resolve("logs");
+        assertEquals(logs, javaRun.logFile().getParent());
+        assertEquals(logs, jspRun.logFile().getParent());
+        assertFalse(javaRun.logFile().equals(jspRun.logFile()));
+        assertTrue(Files.isRegularFile(javaRun.logFile()));
+        assertTrue(Files.isRegularFile(jspRun.logFile()));
+        assertEquals(output.resolve(otherSystem).resolve("logs"), otherRun.logFile().getParent());
+        assertTrue(Files.isRegularFile(otherRun.logFile()));
+        assertEquals(javaHash, sha256(javaSource));
+        assertEquals(jspHash, sha256(jspSource));
+    }
+
+    private static boolean workbookContains(Path file, String text) throws IOException {
+        try (Workbook workbook = WorkbookFactory.create(file.toFile())) {
+            for (var sheet : workbook) {
+                for (var row : sheet) {
+                    for (var cell : row) {
+                        if (cell.getCellType() == CellType.STRING && cell.getStringCellValue().contains(text)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
     }
 
     @Test
@@ -205,7 +279,7 @@ class JobRunnerTest {
 
         assertEquals(2, summary.successCount());
         assertEquals(summary.results().get(0).outputFile(), summary.results().get(1).outputFile());
-        Path generated = output.resolve("shared").resolve("A.xls");
+        Path generated = output.resolve("SYS/java/shared/A.xls");
         assertTrue(Files.isRegularFile(generated));
         try (Workbook workbook = WorkbookFactory.create(Files.newInputStream(generated))) {
             assertEquals(10, workbook.getNumberOfSheets());
@@ -218,7 +292,7 @@ class JobRunnerTest {
         Path source = write(module.resolve("Keep.java"), "class Keep {}");
         Path output = tempDir.resolve("output");
         Path keep = output.resolve("keep.txt");
-        Path other = output.resolve("module").resolve("Other.xls");
+        Path other = output.resolve("SYS/java/module/Other.xls");
         write(keep, "keep");
         write(other, "sentinel");
         String sourceHash = sha256(source);
@@ -249,8 +323,8 @@ class JobRunnerTest {
         assertEquals("A.java", javaSummary.results().get(0).sourceFile().getFileName().toString());
         assertEquals(1, jspSummary.totalCount());
         assertEquals("B.jsp", jspSummary.results().get(0).sourceFile().getFileName().toString());
-        assertTrue(Files.isRegularFile(output.resolve("mixed").resolve("A.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("mixed").resolve("B.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/java/mixed/A.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS/jsp/mixed/B.xls")));
     }
 
     @Test
@@ -297,7 +371,7 @@ class JobRunnerTest {
         Path module = tempDir.resolve("sources").resolve("module");
         write(module.resolve("Valid.java"), "class Valid {}");
         Path output = tempDir.resolve("output");
-        write(output.resolve("logs"), "blocks log directory");
+        write(output.resolve("SYS/logs"), "blocks log directory");
 
         RunSummary summary = new JobRunner().run(config(SourceMode.JAVA, output, module), event -> { });
 
@@ -305,6 +379,48 @@ class JobRunnerTest {
         assertTrue(Files.isRegularFile(summary.results().get(0).outputFile()));
         assertEquals(null, summary.logFile());
         assertFalse(summary.logError().isEmpty());
+    }
+
+    @Test
+    void refusesLinkedLogDirectoryWithoutPreventingWorkbookGeneration() throws Exception {
+        Path module = tempDir.resolve("sources").resolve("module");
+        write(module.resolve("Valid.java"), "class Valid {}");
+        Path output = tempDir.resolve("output");
+        Path system = Files.createDirectories(output.resolve("SYS"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        Path link = system.resolve("logs");
+        boolean windows = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows");
+        if (windows) {
+            Process create = new ProcessBuilder("cmd.exe", "/c",
+                    "mklink /J \"" + link + "\" \"" + outside + "\"").redirectErrorStream(true).start();
+            create.getInputStream().readAllBytes();
+            assertEquals(0, create.waitFor(), "could not create log junction fixture");
+        } else {
+            try {
+                Files.createSymbolicLink(link, outside);
+            } catch (UnsupportedOperationException | SecurityException | IOException exception) {
+                assumeTrue(false, "symbolic links unavailable: " + exception);
+            }
+        }
+        try {
+            RunSummary summary = new JobRunner().run(config(SourceMode.JAVA, output, module), event -> { });
+            assertEquals(1, summary.successCount());
+            assertTrue(Files.isRegularFile(output.resolve("SYS/java/module/Valid.xls")));
+            assertEquals(null, summary.logFile());
+            assertFalse(summary.logError().isEmpty());
+            try (var paths = Files.list(outside)) {
+                assertEquals(0, paths.count());
+            }
+        } finally {
+            if (windows) {
+                Process remove = new ProcessBuilder("cmd.exe", "/c", "rmdir \"" + link + "\"")
+                        .redirectErrorStream(true).start();
+                remove.getInputStream().readAllBytes();
+                assertEquals(0, remove.waitFor());
+            } else {
+                Files.deleteIfExists(link);
+            }
+        }
     }
 
     @Test

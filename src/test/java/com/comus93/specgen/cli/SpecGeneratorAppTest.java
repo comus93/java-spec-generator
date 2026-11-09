@@ -60,6 +60,17 @@ class SpecGeneratorAppTest {
     }
 
     @Test
+    void returnsTwoForInvalidSystemWithoutCreatingOutput() throws IOException {
+        Path source = tempDir.resolve("sources").resolve("module");
+        write(source.resolve("A.java"), "class A {}");
+        Path output = tempDir.resolve("output");
+        Path job = writeJob(SourceMode.JAVA, output, "../unsafe", source);
+
+        assertEquals(2, run("generate", "--config", job.toString()));
+        assertFalse(Files.exists(output));
+    }
+
+    @Test
     void returnsZeroForSuccessfulGeneration() throws IOException {
         Path source = tempDir.resolve("sources").resolve("module");
         write(source.resolve("A.java"), "class A { int add(int a, int b) { return a + b; } }");
@@ -69,7 +80,7 @@ class SpecGeneratorAppTest {
         int exitCode = run("generate", "--config", job.toString());
 
         assertEquals(0, exitCode);
-        assertTrue(Files.isRegularFile(output.resolve("module").resolve("A.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS").resolve("java").resolve("module").resolve("A.xls")));
     }
 
     @Test
@@ -86,8 +97,8 @@ class SpecGeneratorAppTest {
                 new PrintStream(err, true, StandardCharsets.UTF_8));
 
         assertEquals(1, exitCode);
-        assertTrue(Files.isRegularFile(output.resolve("module").resolve("Good.xls")));
-        assertFalse(Files.exists(output.resolve("module").resolve("Bad.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS").resolve("java").resolve("module").resolve("Good.xls")));
+        assertFalse(Files.exists(output.resolve("SYS").resolve("java").resolve("module").resolve("Bad.xls")));
         assertTrue(err.toString(StandardCharsets.UTF_8).contains("Bad.java"));
     }
 
@@ -141,8 +152,8 @@ class SpecGeneratorAppTest {
         assertTrue(log.contains("[3/3] SUCCESS"), log);
         assertTrue(log.contains("Partial success:"), log);
         assertTrue(log.contains(output.toString()), log);
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
-        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("03-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS").resolve("jsp").resolve("jsp").resolve("01-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS").resolve("jsp").resolve("jsp").resolve("03-valid.xls")));
     }
 
     @Test
@@ -169,7 +180,7 @@ class SpecGeneratorAppTest {
                 new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8), runner);
 
         assertEquals(0, exitCode);
-        assertTrue(Files.isRegularFile(output.resolve("module").resolve("Warn.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("SYS").resolve("java").resolve("module").resolve("Warn.xls")));
         assertTrue(out.toString(StandardCharsets.UTF_8).contains("WARNING"));
     }
 
@@ -180,9 +191,13 @@ class SpecGeneratorAppTest {
     }
 
     private Path writeJob(SourceMode mode, Path output, Path... sourceFolders) throws IOException {
+        return writeJob(mode, output, "SYS", sourceFolders);
+    }
+
+    private Path writeJob(SourceMode mode, Path output, String system, Path... sourceFolders) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("mode", mode.name());
-        root.put("system", "SYS");
+        root.put("system", system);
         root.put("author", "author");
         root.put("programName", "program");
         root.put("overview", "overview");

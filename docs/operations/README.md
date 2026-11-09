@@ -52,8 +52,8 @@ files. A warning still produces a workbook and does not by itself change the CLI
 
 The GUI shows a concise line for each warning or failure, including the file name, available
 location and a short reason. The CLI also reports warnings and failures. Each run attempts to
-write a detailed diagnostic log under the output directory's `logs` folder. The GUI and CLI
-report its path and visibly report any log I/O error; a log error does not change file-result exit
+write a detailed diagnostic log under `outputDirectory/system/logs`, shared by Java and JSP runs.
+The GUI and CLI report its path and visibly report any log I/O error; a log error does not change file-result exit
 semantics. Detailed diagnostics can include the original parser error and source excerpts.
 Treat the log and output directory as confidential.
 
@@ -80,9 +80,20 @@ Treat the log and output directory as confidential.
 ```
 
 `mode` is `JAVA` or `JSP`; `outputFormat` is `xls` or `xlsx`. A Java job processes only `.java`
-files and a JSP job processes only `.jsp` files. Output hierarchy is preserved beneath the module
-folder, with the source extension replaced by the workbook extension. Repeated runs overwrite only
-the generated workbook for the same source; unrelated output files and source files are preserved.
+files and a JSP job processes only `.jsp` files. `outputDirectory` is the selected base directory,
+not the system or mode directory. The exact `system` value must be a safe single directory name:
+it must not be empty, contain path separators or traversal components, or use an invalid or reserved
+file name. Leading or trailing whitespace is not silently removed; enter the intended name exactly.
+
+Workbooks are written beneath `outputDirectory/system/java` for Java or
+`outputDirectory/system/jsp` for JSP. Under that mode directory, the selected physical source
+folder's basename is followed by the source's relative path, with its extension replaced by the
+workbook extension. For example, `module1/com/example/A.java` becomes
+`D:\SpecOutput\SYS1\java\module1\com\example\A.xls` for the configuration above. Logs from both
+modes go to `D:\SpecOutput\SYS1\logs`.
+
+Repeated runs overwrite only the generated workbook for the same source; unrelated output files
+and source files are preserved. Files generated in the legacy layout are not moved or deleted.
 
 ## Build and package
 

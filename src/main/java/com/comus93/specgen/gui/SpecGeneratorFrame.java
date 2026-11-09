@@ -309,7 +309,7 @@ public final class SpecGeneratorFrame extends JFrame {
     }
 
     private void syncSystem() {
-        moduleModel.updateSystem(systemField.getText().trim());
+        moduleModel.updateSystem(systemField.getText());
     }
 
     private void chooseFolders() {
@@ -425,10 +425,7 @@ public final class SpecGeneratorFrame extends JFrame {
     }
 
     private JobConfig buildConfig() {
-        String system = systemField.getText().trim();
-        if (system.isEmpty()) {
-            throw new IllegalArgumentException("시스템을 입력하세요.");
-        }
+        String system = systemField.getText();
         String outputDirectory = outputDirectoryField.getText().trim();
         if (outputDirectory.isEmpty()) {
             throw new IllegalArgumentException("출력 폴더를 선택하세요.");

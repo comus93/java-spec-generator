@@ -61,7 +61,7 @@ public final class JobRunner {
 
         List<SourceJob> jobs = scanner.plan(config);
         List<FileResult> results = new ArrayList<>(jobs.size());
-        RunLog log = new RunLog(config.outputDirectory());
+        RunLog log = new RunLog(config.outputDirectory(), config.system());
         int total = jobs.size();
         int completed = 0;
         for (SourceJob job : jobs) {

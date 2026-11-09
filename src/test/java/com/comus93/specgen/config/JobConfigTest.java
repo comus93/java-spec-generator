@@ -244,6 +244,56 @@ class JobConfigTest {
         assertTrue(error.getMessage().contains("outputFormat"));
     }
 
+    @Test
+    void acceptsUnicodeSystemAsOnePathSegment() {
+        JobConfig config = configWithSystem("시스템-한글");
+
+        assertEquals("시스템-한글", config.system());
+    }
+
+    @Test
+    void preservesInteriorAndLeadingSpaces() {
+        assertEquals(" 시스템 이름", configWithSystem(" 시스템 이름").system());
+    }
+
+    @Test
+    void preservesUnicodeSpacesInsideAndBeforeSystemNames() {
+        for (String system : new String[] {"\u00a0시스템 이름", "시스템\u2003이름", "시스템\u3000이름"}) {
+            assertEquals(system, configWithSystem(system).system());
+        }
+    }
+
+    @Test
+    void rejectsUnicodeBlankAndTrailingWhitespace() {
+        for (String system : new String[] {
+                "\u2003", "\u00a0", "\u2007\u202f", "\u3000", "\t",
+                "시스템\u2003", "시스템\u00a0", "시스템\u2007", "시스템\u202f",
+                "시스템\u3000", "시스템\t"
+        }) {
+            assertThrows(IllegalArgumentException.class, () -> configWithSystem(system), system);
+        }
+    }
+
+    @Test
+    void rejectsSystemsThatAreNotSafeWindowsPathSegments() {
+        for (String system : new String[] {
+                "", " ", ".", "..", "../escape", "a/b", "a\\b",
+                "CON", "con.txt", "PrN.xls", "AUX", "NUL.log",
+                "COM1", "com9.txt", "LPT1", "lpt9.xls",
+                "CONIN$", "conout$.txt", "COM¹.txt", "lpt²",
+                "name.", "name ", "a<b", "a>b", "a:b", "a\"b",
+                "a|b", "a?b", "a*b", "a\u0001b", "a\u0085b"
+        }) {
+            assertThrows(IllegalArgumentException.class, () -> configWithSystem(system), system);
+        }
+    }
+
+    private JobConfig configWithSystem(String system) {
+        return new JobConfig(SourceMode.JAVA, system, "author", null, "program", "overview",
+                tempDir.resolve("output"), OutputFormat.XLS,
+                java.util.List.of(new ModuleSelection(tempDir.resolve("module"), "SYS1", "module")));
+    }
+
     private Path writeJson(String json) throws IOException {
         Path file = tempDir.resolve("job.json");
         Files.writeString(file, json, StandardCharsets.UTF_8);

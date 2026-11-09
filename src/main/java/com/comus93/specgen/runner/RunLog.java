@@ -5,8 +5,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -18,17 +21,31 @@ final class RunLog {
     private BufferedWriter writer;
     private String error = "";
 
-    RunLog(Path outputDirectory) {
+    RunLog(Path outputDirectory, String system) {
         LocalDateTime started = LocalDateTime.now();
         try {
-            Path directory = outputDirectory.resolve("logs");
+            Path base = outputDirectory.toAbsolutePath().normalize();
+            Path directory = outputDirectory.resolve(system).resolve("logs");
+            if (!directory.toAbsolutePath().normalize().startsWith(base)) {
+                throw new IOException("Log directory escapes output directory: " + directory);
+            }
+            validatePath(directory);
             Files.createDirectories(directory);
+            validatePath(directory);
             String name = "specgen-" + FILE_TIME.format(started);
             for (int suffix = 0; ; suffix++) {
                 Path candidate = directory.resolve(name + (suffix == 0 ? "" : "-" + suffix) + ".log");
+                validatePath(candidate);
                 try {
                     writer = Files.newBufferedWriter(candidate, StandardCharsets.UTF_8,
-                            StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                            StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+                    try {
+                        validatePath(candidate);
+                    } catch (IOException | SecurityException exception) {
+                        writer.close();
+                        writer = null;
+                        throw exception;
+                    }
                     file = candidate;
                     break;
                 } catch (FileAlreadyExistsException ignored) {
@@ -38,6 +55,20 @@ final class RunLog {
             write("Started: " + started + "\n");
         } catch (IOException | SecurityException exception) {
             recordError(exception);
+        }
+    }
+
+    private static void validatePath(Path path) throws IOException {
+        for (Path cursor = path.toAbsolutePath().normalize(); cursor != null; cursor = cursor.getParent()) {
+            try {
+                BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+                if (attributes.isSymbolicLink() || attributes.isOther()) {
+                    throw new IOException("Log path contains a link or reparse point: " + cursor);
+                }
+            } catch (NoSuchFileException ignored) {
+                // Missing components are checked again after directory or file creation.
+            }
         }
     }
 

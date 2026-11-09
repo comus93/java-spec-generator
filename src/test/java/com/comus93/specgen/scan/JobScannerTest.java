@@ -40,7 +40,7 @@ class JobScannerTest {
         assertEquals(module, job.module());
         assertEquals(sourceFile.toRealPath(), job.sourceFile());
         assertEquals(Path.of("controller", "A.java"), job.relativePath());
-        assertEquals(outputRoot.resolve("module1").resolve("controller").resolve("A.xls"), job.outputFile());
+        assertEquals(outputRoot.resolve("SYS1").resolve("java").resolve("module1").resolve("controller").resolve("A.xls"), job.outputFile());
         assertFalse(job.outputFile().toString().contains("edited display name"));
     }
 
@@ -112,8 +112,8 @@ class JobScannerTest {
         assertEquals(sourceFile.toRealPath(), childJob.sourceFile());
         assertEquals(Path.of("controller", "A.java"), parentJob.relativePath());
         assertEquals(Path.of("A.java"), childJob.relativePath());
-        assertEquals(outputRoot.resolve("module1").resolve("controller").resolve("A.xls"), parentJob.outputFile());
-        assertEquals(outputRoot.resolve("controller").resolve("A.xls"), childJob.outputFile());
+        assertEquals(outputRoot.resolve("SYS1").resolve("java").resolve("module1").resolve("controller").resolve("A.xls"), parentJob.outputFile());
+        assertEquals(outputRoot.resolve("SYS1").resolve("java").resolve("controller").resolve("A.xls"), childJob.outputFile());
         assertEquals("parent", parentJob.module().moduleName());
         assertEquals("child", childJob.module().moduleName());
     }
@@ -141,7 +141,7 @@ class JobScannerTest {
         Path source = tempDir.resolve("src").resolve("module1");
         writeSource(source.resolve("controller").resolve("A.java"));
         Path outputRoot = tempDir.resolve("output");
-        Path existingOutput = outputRoot.resolve("module1").resolve("controller").resolve("A.xls");
+        Path existingOutput = outputRoot.resolve("SYS1").resolve("java").resolve("module1").resolve("controller").resolve("A.xls");
         Files.createDirectories(existingOutput.getParent());
         Files.writeString(existingOutput, "existing");
 
@@ -222,8 +222,8 @@ class JobScannerTest {
         Path source = tempDir.resolve("src").resolve("module1");
         writeSource(source.resolve("controller").resolve("A.java"));
         Path outputRoot = tempDir.resolve("output");
-        Files.createDirectories(outputRoot);
-        Path junction = outputRoot.resolve("module1");
+        Path junction = outputRoot.resolve("SYS1").resolve("java").resolve("module1");
+        Files.createDirectories(junction.getParent());
         assertTrue(createJunction(junction, source), "could not create output junction fixture");
 
         try {
@@ -243,8 +243,8 @@ class JobScannerTest {
         Path external = tempDir.resolve("external");
         Files.createDirectories(external);
         Path outputRoot = tempDir.resolve("output");
-        Files.createDirectories(outputRoot);
-        Path junction = outputRoot.resolve("module1");
+        Path junction = outputRoot.resolve("SYS1").resolve("java").resolve("module1");
+        Files.createDirectories(junction.getParent());
         assertTrue(createJunction(junction, external), "could not create output junction fixture");
 
         try {
@@ -262,7 +262,7 @@ class JobScannerTest {
         Path source = tempDir.resolve("src").resolve("module1");
         writeSource(source.resolve("controller").resolve("A.java"));
         Path outputRoot = tempDir.resolve("output");
-        Path moduleOutputDirectory = outputRoot.resolve("module1");
+        Path moduleOutputDirectory = outputRoot.resolve("SYS1").resolve("java").resolve("module1");
         Files.createDirectories(moduleOutputDirectory);
         Path junction = moduleOutputDirectory.resolve("controller");
         assertTrue(createJunction(junction, source.resolve("controller")),
@@ -285,7 +285,7 @@ class JobScannerTest {
         Path external = tempDir.resolve("external");
         Files.createDirectories(external);
         Path outputRoot = tempDir.resolve("output");
-        Path destinationParent = outputRoot.resolve("module1").resolve("controller");
+        Path destinationParent = outputRoot.resolve("SYS1").resolve("java").resolve("module1").resolve("controller");
         Files.createDirectories(destinationParent);
         Path destination = destinationParent.resolve("A.xls");
         assertTrue(createJunction(destination, external), "could not create destination junction fixture");
@@ -312,7 +312,7 @@ class JobScannerTest {
 
         assertEquals(1, jobs.size());
         assertEquals(sourceFile.toRealPath(), jobs.get(0).sourceFile());
-        assertEquals(outputRoot.resolve("PhysicalModule").resolve("controller").resolve("A.xls"),
+        assertEquals(outputRoot.resolve("SYS1").resolve("java").resolve("PhysicalModule").resolve("controller").resolve("A.xls"),
                 jobs.get(0).outputFile());
     }
 
@@ -336,6 +336,187 @@ class JobScannerTest {
             assertFalse(jobs.stream().anyMatch(job -> job.sourceFile().getFileName().toString().equals("Outside.java")));
         } finally {
             removeJunction(junction);
+        }
+    }
+
+    @Test
+    void plansNestedJavaAndJspPathsUnderUnicodeSystemAndMode() throws IOException {
+        Path source = tempDir.resolve("sources").resolve("physical-module");
+        Path javaFile = writeSource(source.resolve("nested").resolve("deeper").resolve("Handler.java"));
+        Path jspFile = writeSource(source.resolve("nested").resolve("deeper").resolve("view.jsp"));
+        Path output = tempDir.resolve("output");
+        ModuleSelection module = new ModuleSelection(source, "OTHER", "display name");
+
+        for (SourceMode mode : List.of(SourceMode.JAVA, SourceMode.JSP)) {
+            JobConfig jobConfig = new JobConfig(mode, "시스템", "author", null, "program", "overview",
+                    output, OutputFormat.XLSX, List.of(module));
+            List<SourceJob> jobs = new JobScanner().plan(jobConfig);
+            String sourceName = mode == SourceMode.JAVA ? "Handler.java" : "view.jsp";
+            String outputName = mode == SourceMode.JAVA ? "Handler.xlsx" : "view.xlsx";
+
+            assertEquals(1, jobs.size());
+            assertEquals(mode == SourceMode.JAVA ? javaFile.toRealPath() : jspFile.toRealPath(),
+                    jobs.get(0).sourceFile());
+            assertEquals(Path.of("nested", "deeper", sourceName), jobs.get(0).relativePath());
+            assertEquals(output.resolve("시스템").resolve(mode.name().toLowerCase(Locale.ROOT))
+                    .resolve("physical-module").resolve("nested").resolve("deeper").resolve(outputName),
+                    jobs.get(0).outputFile());
+        }
+    }
+
+    @Test
+    void rejectsSystemModeOutputInsideSourceEvenWhenBaseIsOutside() throws IOException {
+        for (SourceMode mode : List.of(SourceMode.JAVA, SourceMode.JSP)) {
+            Path output = tempDir.resolve("output-" + mode);
+            Path source = output.resolve("SYS1").resolve(mode.name().toLowerCase(Locale.ROOT)).resolve("module1");
+            Path sourceFile = writeSource(source.resolve(mode == SourceMode.JAVA ? "A.java" : "A.jsp"));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JobScanner().plan(config(mode, output,
+                            new ModuleSelection(source, "SYS1", "module1"))));
+            assertEquals("class Sample {}", Files.readString(sourceFile));
+        }
+    }
+
+    @Test
+    void rejectsSystemAndModeLinksOutsideOutputOrIntoSource() throws Exception {
+        Path source = tempDir.resolve("src").resolve("module1");
+        Path sourceFile = writeSource(source.resolve("A.java"));
+        Path external = tempDir.resolve("external");
+        Files.createDirectories(external);
+
+        for (String segment : List.of("system", "mode")) {
+            for (Path target : List.of(external, source)) {
+                Path output = tempDir.resolve("output-" + segment + "-" + target.getFileName());
+                Path link = segment.equals("system") ? output.resolve("SYS1") : output.resolve("SYS1").resolve("java");
+                Files.createDirectories(link.getParent());
+                if (isWindows()) {
+                    assertTrue(createJunction(link, target), "could not create output junction fixture");
+                } else {
+                    try {
+                        Files.createSymbolicLink(link, target);
+                    } catch (UnsupportedOperationException | SecurityException | IOException e) {
+                        assumeTrue(false, "symbolic links unavailable: " + e);
+                    }
+                }
+
+                try {
+                    assertThrows(IllegalArgumentException.class,
+                            () -> new JobScanner().plan(config(SourceMode.JAVA, output,
+                                    new ModuleSelection(source, "SYS1", "module1"))),
+                            segment + " link to " + target);
+                    assertEquals("class Sample {}", Files.readString(sourceFile));
+                } finally {
+                    if (isWindows()) {
+                        removeJunction(link);
+                    } else {
+                        Files.deleteIfExists(link);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void rejectsDerivedDestinationsInsideAnyEmptySourceRoot() throws IOException {
+        for (String destination : List.of("SYS1", "SYS1/java", "SYS1/java/other", "SYS1/logs")) {
+            Path output = tempDir.resolve("empty-" + destination.replace('/', '-'));
+            Path source = output.resolve(destination);
+            Path other = tempDir.resolve("other");
+            Files.createDirectories(source);
+            Files.createDirectories(other);
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JobScanner().plan(config(SourceMode.JAVA, output,
+                            new ModuleSelection(other, "SYS1", "other"),
+                            new ModuleSelection(source, "SYS1", "empty"))), destination);
+        }
+    }
+
+    @Test
+    void rejectsDanglingDerivedLinkEvenWithoutMatchingSources() throws IOException {
+        Path source = tempDir.resolve("empty-source");
+        Path output = tempDir.resolve("dangling-output");
+        Files.createDirectories(source);
+        Files.createDirectories(output);
+        try {
+            Files.createSymbolicLink(output.resolve("SYS1"), tempDir.resolve("missing-target"));
+        } catch (UnsupportedOperationException | SecurityException | IOException e) {
+            assumeTrue(false, "symbolic links unavailable: " + e);
+        }
+        assertThrows(IllegalArgumentException.class,
+                () -> new JobScanner().plan(config(SourceMode.JAVA, output,
+                        new ModuleSelection(source, "SYS1", "empty"))));
+    }
+
+    @Test
+    void rejectsInternalAndDanglingOutputLinksAtEveryDerivedLevel() throws IOException {
+        Path source = tempDir.resolve("link-source").resolve("module1");
+        writeSource(source.resolve("controller").resolve("A.java"));
+        for (String segment : List.of("SYS1", "SYS1/java", "SYS1/java/module1",
+                "SYS1/java/module1/controller", "SYS1/java/module1/controller/A.xls")) {
+            for (boolean dangling : List.of(false, true)) {
+                Path output = tempDir.resolve("links-" + segment.replace('/', '-') + "-" + dangling);
+                Path target = output.resolve("internal-target");
+                Files.createDirectories(output);
+                if (!dangling) {
+                    Files.createDirectories(target);
+                }
+                Path link = output.resolve(segment);
+                Files.createDirectories(link.getParent());
+                try {
+                    Files.createSymbolicLink(link, target);
+                } catch (UnsupportedOperationException | SecurityException | IOException e) {
+                    assumeTrue(false, "symbolic links unavailable: " + e);
+                }
+                assertThrows(IllegalArgumentException.class,
+                        () -> new JobScanner().plan(config(SourceMode.JAVA, output,
+                                new ModuleSelection(source, "SYS1", "module1"))), segment + " dangling=" + dangling);
+            }
+        }
+    }
+
+    @Test
+    void rejectsInternalOutputJunctions() throws Exception {
+        assumeTrue(isWindows(), "Windows junction filesystem check");
+        Path source = tempDir.resolve("junction-source").resolve("module1");
+        writeSource(source.resolve("controller").resolve("A.java"));
+        for (String segment : List.of("SYS1", "SYS1/java", "SYS1/java/module1",
+                "SYS1/java/module1/controller", "SYS1/java/module1/controller/A.xls")) {
+            Path output = tempDir.resolve("junction-" + segment.replace('/', '-'));
+            Path target = output.resolve("internal-target");
+            Files.createDirectories(target);
+            Path link = output.resolve(segment);
+            Files.createDirectories(link.getParent());
+            assertTrue(createJunction(link, target), "could not create output junction fixture");
+            try {
+                assertThrows(IllegalArgumentException.class,
+                        () -> new JobScanner().plan(config(SourceMode.JAVA, output,
+                                new ModuleSelection(source, "SYS1", "module1"))), segment);
+            } finally {
+                removeJunction(link);
+            }
+        }
+    }
+
+    @Test
+    void leavesLinkedLogsComponentForRunLog() throws IOException {
+        Path source = tempDir.resolve("logs-source").resolve("module1");
+        writeSource(source.resolve("A.java"));
+        for (boolean dangling : List.of(false, true)) {
+            Path output = tempDir.resolve("logs-output-" + dangling);
+            Path target = tempDir.resolve("logs-target-" + dangling);
+            if (!dangling) {
+                Files.createDirectories(target);
+            }
+            Path logs = output.resolve("SYS1").resolve("logs");
+            Files.createDirectories(logs.getParent());
+            try {
+                Files.createSymbolicLink(logs, target);
+            } catch (UnsupportedOperationException | SecurityException | IOException e) {
+                assumeTrue(false, "symbolic links unavailable: " + e);
+            }
+            assertEquals(1, new JobScanner().plan(config(SourceMode.JAVA, output,
+                    new ModuleSelection(source, "SYS1", "module1"))).size());
         }
     }
 
