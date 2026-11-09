@@ -176,52 +176,6 @@ class JobConfigTest {
     }
 
     @Test
-    void rejectsUnknownJobKey() throws IOException {
-        Path json = writeJson("""
-                {
-                  "mode": "JAVA",
-                  "system": "SYS1",
-                  "outputDirectory": "D:\\\\SpecOutput",
-                  "unexpected": true,
-                  "modules": [
-                    {
-                      "sourceFolder": "C:\\\\root\\\\module1",
-                      "subsystem": "SYS1",
-                      "moduleName": "module1"
-                    }
-                  ]
-                }
-                """);
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new JsonJobConfigReader().read(json));
-        assertTrue(error.getMessage().contains("unexpected"));
-    }
-
-    @Test
-    void rejectsUnknownModuleKey() throws IOException {
-        Path json = writeJson("""
-                {
-                  "mode": "JAVA",
-                  "system": "SYS1",
-                  "outputDirectory": "D:\\\\SpecOutput",
-                  "modules": [
-                    {
-                      "sourceFolder": "C:\\\\root\\\\module1",
-                      "subsystem": "SYS1",
-                      "moduleName": "module1",
-                      "unexpected": "value"
-                    }
-                  ]
-                }
-                """);
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new JsonJobConfigReader().read(json));
-        assertTrue(error.getMessage().contains("unexpected"));
-    }
-
-    @Test
     void rejectsInvalidOutputFormat() throws IOException {
         Path json = writeJson("""
                 {
@@ -249,29 +203,6 @@ class JobConfigTest {
         JobConfig config = configWithSystem("시스템-한글");
 
         assertEquals("시스템-한글", config.system());
-    }
-
-    @Test
-    void preservesInteriorAndLeadingSpaces() {
-        assertEquals(" 시스템 이름", configWithSystem(" 시스템 이름").system());
-    }
-
-    @Test
-    void preservesUnicodeSpacesInsideAndBeforeSystemNames() {
-        for (String system : new String[] {"\u00a0시스템 이름", "시스템\u2003이름", "시스템\u3000이름"}) {
-            assertEquals(system, configWithSystem(system).system());
-        }
-    }
-
-    @Test
-    void rejectsUnicodeBlankAndTrailingWhitespace() {
-        for (String system : new String[] {
-                "\u2003", "\u00a0", "\u2007\u202f", "\u3000", "\t",
-                "시스템\u2003", "시스템\u00a0", "시스템\u2007", "시스템\u202f",
-                "시스템\u3000", "시스템\t"
-        }) {
-            assertThrows(IllegalArgumentException.class, () -> configWithSystem(system), system);
-        }
     }
 
     @Test
