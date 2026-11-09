@@ -61,31 +61,45 @@ public final class JobRunner {
 
         List<SourceJob> jobs = scanner.plan(config);
         List<FileResult> results = new ArrayList<>(jobs.size());
+        RunLog log = new RunLog(config.outputDirectory());
         int total = jobs.size();
         int completed = 0;
         for (SourceJob job : jobs) {
             FileResult result = process(config, job);
             results.add(result);
+            log.result(result);
             completed++;
             progress.accept(new ProgressEvent(completed, total, job.sourceFile(), result.status()));
         }
-        return new RunSummary(results);
+        log.finish(new RunSummary(results));
+        return new RunSummary(results, log.file(), log.error());
     }
 
     private FileResult process(JobConfig config, SourceJob job) {
         try {
             WorkbookModel model;
             boolean dateMetadataUnreadable;
+            String recoveryDiagnostic = null;
             if (config.mode() == SourceMode.JAVA) {
                 JavaFacts facts = javaAnalyzer.analyze(job.sourceFile());
                 dateMetadataUnreadable = isDateMetadataUnreadable(config, job);
                 model = javaMapper.map(facts, config, job);
             } else {
                 JspFacts facts = jspAnalyzer.analyze(job.sourceFile());
+                recoveryDiagnostic = facts.recoveryDiagnostic();
                 dateMetadataUnreadable = isDateMetadataUnreadable(config, job);
                 model = jspMapper.map(facts, config, job);
             }
             writer.write(model, job.outputFile(), config.outputFormat(), config.outputDirectory());
+            if (recoveryDiagnostic != null) {
+                String message = ParseSourceExcerpt.append(job.sourceFile(),
+                        SourceAnalysisException.PARSE_ERROR, recoveryDiagnostic);
+                if (dateMetadataUnreadable) {
+                    message += "\nSource modification time is unavailable.";
+                }
+                return new FileResult(job.sourceFile(), job.outputFile(),
+                        FileResult.FileStatus.WARNING, SourceAnalysisException.PARSE_ERROR, message);
+            }
             if (dateMetadataUnreadable) {
                 return new FileResult(job.sourceFile(), job.outputFile(),
                         FileResult.FileStatus.WARNING, DATE_METADATA_ERROR,

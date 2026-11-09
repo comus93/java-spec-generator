@@ -236,14 +236,16 @@ class PmdJspAnalyzerTest {
     }
 
     @Test
-    void doesNotSilenceUnsupportedDocumentTypeDeclarations() throws Exception {
+    void recoversSafeEvidenceFromUnsupportedDocumentTypeDeclarations() throws Exception {
         Path path = customJsp("unsupported-doctype.jsp",
                 "<%@ page language=\"java\" %>\n<!DOCTYPE not-html>\n<html/>");
 
-        SourceAnalysisException error = assertThrows(
-                SourceAnalysisException.class, () -> analyzer.analyze(path));
+        JspFacts facts = analyzer.analyze(path);
 
-        assertEquals(SourceAnalysisException.PARSE_ERROR, error.errorCode());
+        assertTrue(facts.recoveryDiagnostic().contains("PMD parse error"));
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "DIRECTIVE".equals(flow.nodeKind()) && "page".equals(flow.tagOrFile())
+                        && flow.line() == 1));
     }
 
     @Test
@@ -293,6 +295,57 @@ class PmdJspAnalyzerTest {
     }
 
     @Test
+    void recoversConcreteInputWithoutInventingAmbiguousConditionalAttribute() throws Exception {
+        String source = String.join("\n",
+                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
+                "<div <c:if test=\"\u0024{edit}\"> class='essential' <span>not-an-attribute</span>"
+                        + "</c:if> style=\"flex:1\">",
+                "    <input name=\"accountId\" type=\"text\"/>",
+                "</div>");
+        Path path = customJsp("recover-invalid-inline-cif.jsp", source);
+
+        JspFacts facts = analyzer.analyze(path);
+
+        assertEquals(path, facts.sourceFile());
+        assertEquals(source, Files.readString(path, StandardCharsets.UTF_8));
+        ScreenFieldFact input = field(facts, "accountId");
+        assertEquals("text", input.fieldType());
+        assertEquals(3, input.line());
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "input".equalsIgnoreCase(flow.tagOrFile()) && flow.line() == 3));
+        assertTrue(facts.flows().stream()
+                .filter(flow -> "div".equalsIgnoreCase(flow.tagOrFile()))
+                .noneMatch(flow -> flow.attributes().containsKey("class")));
+        assertTrue(facts.screenFields().stream()
+                .noneMatch(field -> field.rawAttributes().containsKey("class")));
+    }
+
+    @Test
+    void recoveryOmitsDescendantsOfUnknownCustomTags() throws Exception {
+        String source = String.join("\n",
+                "<sec:authorize access=\"hasRole('ADMIN')\">",
+                "  <input name=\"restricted\"/>",
+                "  <other:condition><input name=\"nested\"/></other:condition>",
+                "</sec:authorize>",
+                "<x:condition><input name=\"otherRestricted\"/></x:condition>",
+                "<c:if test=\"${enabled}\"><input name=\"conditional\"/></c:if>",
+                "<custom:marker/><input name=\"independent\" type=\"text\"/>");
+        Path path = customJsp("custom-conditional.jsp", source);
+
+        JspFacts facts = LenientJspRecovery.recover(path, source, "parse failure");
+
+        assertEquals(List.of("independent"),
+                facts.screenFields().stream().map(ScreenFieldFact::fieldName).toList());
+        assertTrue(facts.flows().stream().noneMatch(flow ->
+                "input".equalsIgnoreCase(flow.tagOrFile())
+                        && !"independent".equals(flow.attributes().get("name"))));
+        assertTrue(facts.flows().stream().anyMatch(flow ->
+                "input".equalsIgnoreCase(flow.tagOrFile())
+                        && "independent".equals(flow.attributes().get("name"))));
+        assertEquals(source, Files.readString(path, StandardCharsets.UTF_8));
+    }
+
+    @Test
     void doesNotSilenceInvalidConditionalContentInOpeningTag() throws Exception {
         Path path = customJsp("invalid-inline-cif.jsp",
                 "<div <c:if test=\"\u0024{edit}\"><span>not-an-attribute</span>"
@@ -301,6 +354,7 @@ class PmdJspAnalyzerTest {
         SourceAnalysisException error = assertThrows(
                 SourceAnalysisException.class, () -> analyzer.analyze(path));
 
+        assertEquals(path, error.sourceFile());
         assertEquals(SourceAnalysisException.PARSE_ERROR, error.errorCode());
     }
 

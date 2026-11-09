@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -370,6 +372,8 @@ public final class SpecGeneratorFrame extends JFrame {
         appendLine("모듈 " + config.modules().size() + "개, 출력 폴더: " + config.outputDirectory());
 
         new SwingWorker<RunSummary, ProgressEvent>() {
+            private boolean finished;
+
             @Override
             protected RunSummary doInBackground() {
                 return runner.run(config, this::publish);
@@ -377,17 +381,23 @@ public final class SpecGeneratorFrame extends JFrame {
 
             @Override
             protected void process(List<ProgressEvent> events) {
+                if (finished) {
+                    return;
+                }
                 for (ProgressEvent event : events) {
                     int percent = event.total() == 0 ? 0
                             : (int) Math.round(event.completed() * 100.0 / event.total());
                     progressBar.setValue(percent);
                     progressBar.setString(event.completed() + " / " + event.total());
-                    appendLine(statusLabel(event.status()) + " " + event.sourceFile());
+                    if (event.status() == FileResult.FileStatus.SUCCESS) {
+                        appendLine(statusLabel(event.status()) + " " + event.sourceFile());
+                    }
                 }
             }
 
             @Override
             protected void done() {
+                finished = true;
                 try {
                     RunSummary summary = get();
                     int total = summary.totalCount();
@@ -472,8 +482,13 @@ public final class SpecGeneratorFrame extends JFrame {
             if (result.status() == FileResult.FileStatus.SUCCESS) {
                 continue;
             }
-            appendLine(statusLabel(result.status()) + " " + result.sourceFile()
-                    + " [" + result.errorCode() + "] " + result.message());
+            appendLine(diagnosticLine(result));
+        }
+        if (summary.logFile() != null) {
+            appendLine("상세 로그: " + summary.logFile());
+        }
+        if (!summary.logError().isEmpty()) {
+            appendLine("로그 저장 오류: " + singleLine(summary.logError(), 240));
         }
     }
 
@@ -504,6 +519,38 @@ public final class SpecGeneratorFrame extends JFrame {
             }
         }
         return paths;
+    }
+
+    private static final Pattern DIAGNOSTIC_LOCATION = Pattern.compile(
+            "(?i)\\bline\\s+(\\d+)\\s*,\\s*column\\s+(\\d+)|\\b(\\d+):(\\d+)\\b");
+
+    static String diagnosticLine(FileResult result) {
+        String message = result.message();
+        Matcher location = DIAGNOSTIC_LOCATION.matcher(message);
+        String position = "";
+        if (location.find()) {
+            position = " " + (location.group(1) != null
+                    ? location.group(1) + ":" + location.group(2)
+                    : location.group(3) + ":" + location.group(4));
+        }
+        Path filename = result.sourceFile().getFileName();
+        String name = singleLine(filename == null ? result.sourceFile().toString() : filename.toString(), 48);
+        String code = singleLine(result.errorCode(), 32);
+        String reason = switch (result.errorCode()) {
+            case "PARSE_ERROR" -> result.status() == FileResult.FileStatus.WARNING
+                    ? "구문 분석 실패, 부분 복구" : "구문 분석 실패";
+            case "READ_ERROR" -> "원본 읽기 실패";
+            case "WRITE_ERROR" -> "결과 저장 실패";
+            case "DATE_METADATA_ERROR" -> "날짜 정보 오류";
+            case "PROCESSING_ERROR" -> "처리 오류";
+            default -> result.status() == FileResult.FileStatus.WARNING ? "처리 경고" : "처리 실패";
+        };
+        return statusLabel(result.status()) + " " + name + position + " [" + code + "] " + reason;
+    }
+
+    private static String singleLine(String value, int maxLength) {
+        String text = value.replaceAll("[\\p{Cntrl}\\s]+", " ").strip();
+        return text.length() <= maxLength ? text : text.substring(0, maxLength) + "...";
     }
 
     private static String statusLabel(FileResult.FileStatus status) {

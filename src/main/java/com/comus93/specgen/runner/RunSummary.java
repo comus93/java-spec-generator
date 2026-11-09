@@ -4,10 +4,15 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
-public record RunSummary(List<FileResult> results) {
+public record RunSummary(List<FileResult> results, Path logFile, String logError) {
+
+    public RunSummary(List<FileResult> results) {
+        this(results, null, "");
+    }
 
     public RunSummary {
         Objects.requireNonNull(results, "results");
+        Objects.requireNonNull(logError, "logError");
         results = List.copyOf(results);
     }
 

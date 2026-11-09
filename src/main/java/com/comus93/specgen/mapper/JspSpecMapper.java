@@ -55,6 +55,10 @@ public final class JspSpecMapper {
         List<SheetRow> detail = new ArrayList<>();
         detail.add(row(RowKind.TITLE, "상세 사양  |  " + filename));
         detail.add(row(RowKind.EMPTY));
+        if (facts.recoveryDiagnostic() != null) {
+            detail.add(row(RowKind.SECTION, "WARNING: Recovered JSP; facts may be incomplete."));
+            detail.add(row(RowKind.SECTION, "Structural nesting and conditional relationships may be omitted."));
+        }
         detail.add(row(RowKind.SECTION, "상수 및 전역 변수"));
         detail.add(row(RowKind.HEADER, "상수/변수명", "Type", "설명", "비고"));
         for (var constant : facts.constants()) {

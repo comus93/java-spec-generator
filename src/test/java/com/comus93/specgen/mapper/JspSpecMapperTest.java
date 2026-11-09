@@ -75,4 +75,30 @@ class JspSpecMapperTest {
         assertEquals(10, book.sheets().get(0).rows().stream().filter(r -> r.role() == RowKind.DATA).count());
         assertTrue(book.sheets().get(2).rows().stream().filter(r -> r.role() == RowKind.DATA).allMatch(r -> r.values().size() == 3));
     }
+    @Test void warnsOnlyForRecoveredFactsWithoutChangingMappedFacts() {
+        Path source = root.resolve("recovered.jsp");
+        SourceJob job = new SourceJob(module, source, Path.of("recovered.jsp"), Path.of("out", "recovered.xlsx"));
+        List<JspFacts.EventFact> events = List.of(new JspFacts.EventFact("LINK_CLICK", "Open", "/open", null, 1));
+        JspFacts strict = new JspFacts(source, List.of(), List.of(), events, List.of());
+        JspFacts recovered = new JspFacts(source, List.of(), List.of(), events, List.of(),
+                "PMD parse error; recovered with limited structure");
+        JspSpecMapper mapper = new JspSpecMapper();
+        WorkbookModel strictBook = mapper.map(strict, config, job);
+        WorkbookModel recoveredBook = mapper.map(recovered, config, job);
+
+        for (int i = 0; i < 4; i++) {
+            assertEquals(strictBook.sheets().get(i).rows(), recoveredBook.sheets().get(i).rows());
+        }
+        List<SheetRow> strictDetail = strictBook.sheets().get(4).rows();
+        List<SheetRow> recoveredDetail = recoveredBook.sheets().get(4).rows();
+        assertEquals(new SheetRow(RowKind.SECTION, List.of("WARNING: Recovered JSP; facts may be incomplete.")),
+                recoveredDetail.get(2));
+        assertEquals(new SheetRow(RowKind.SECTION, List.of("Structural nesting and conditional relationships may be omitted.")),
+                recoveredDetail.get(3));
+        assertEquals(strictDetail.subList(0, 2), recoveredDetail.subList(0, 2));
+        assertEquals(strictDetail.subList(2, strictDetail.size()), recoveredDetail.subList(4, recoveredDetail.size()));
+        assertTrue(strictBook.sheets().stream().flatMap(sheet -> sheet.rows().stream())
+                .flatMap(row -> row.values().stream())
+                .noneMatch(value -> value instanceof String text && text.contains("WARNING")));
+    }
 }

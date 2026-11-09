@@ -95,24 +95,29 @@ class SpecGeneratorAppTest {
     void printsOriginalJspSourceExcerptInCliFailureSummary() throws IOException {
         Path source = tempDir.resolve("sources").resolve("module");
         write(source.resolve("Unsupported.jsp"), String.join("\n",
-                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
-                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if> style=\"x:y\">",
-                "  <cpc:escv code=\"MIP-M0006\" value=\"유효 기간\" />",
+                "<html>",
+                "<div <c:if test=\"edit\"><span>unsupported</span></c:if> style=\"x:y\">",
+                "  Original source marker",
                 "</div>"));
         Path job = writeJob(SourceMode.JSP, tempDir.resolve("output"), source);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
 
         int exitCode = SpecGeneratorApp.runCli(
                 new String[]{"generate", "--config", job.toString()},
-                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8),
+                new PrintStream(out, true, StandardCharsets.UTF_8),
                 new PrintStream(err, true, StandardCharsets.UTF_8));
 
         String diagnostic = err.toString(StandardCharsets.UTF_8);
         assertEquals(1, exitCode);
         assertTrue(diagnostic.contains("Source excerpt (original JSP)"), diagnostic);
         assertTrue(diagnostic.contains(">    2 | <div <c:if"), diagnostic);
-        assertTrue(diagnostic.contains("MIP-M0006"), diagnostic);
+        assertTrue(diagnostic.contains("Original source marker"), diagnostic);
         assertTrue(diagnostic.contains("^"), diagnostic);
+        String logLine = out.toString(StandardCharsets.UTF_8).lines()
+                .filter(line -> line.startsWith("Log file: "))
+                .findFirst().orElseThrow();
+        assertTrue(Files.isRegularFile(Path.of(logLine.substring("Log file: ".length()))), logLine);
     }
 
     @Test

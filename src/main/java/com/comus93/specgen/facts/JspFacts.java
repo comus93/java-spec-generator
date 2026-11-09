@@ -13,7 +13,8 @@ public record JspFacts(
         List<ScreenFieldFact> screenFields,
         List<FlowFact> flows,
         List<EventFact> events,
-        List<ConstantFact> constants) implements SourceFacts {
+        List<ConstantFact> constants,
+        String recoveryDiagnostic) implements SourceFacts {
 
     public JspFacts {
         Objects.requireNonNull(sourceFile, "sourceFile");
@@ -21,6 +22,11 @@ public record JspFacts(
         flows = List.copyOf(flows);
         events = List.copyOf(events);
         constants = List.copyOf(constants);
+    }
+
+    public JspFacts(Path sourceFile, List<ScreenFieldFact> screenFields, List<FlowFact> flows,
+            List<EventFact> events, List<ConstantFact> constants) {
+        this(sourceFile, screenFields, flows, events, constants, null);
     }
 
     public record ScreenFieldFact(

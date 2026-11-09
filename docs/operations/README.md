@@ -41,6 +41,22 @@ target\jpackage\SpecGenerator\SpecGeneratorGUI.exe
 The GUI requires a desktop session. Closing the window ends the application. The GUI and CLI use
 the same scanner, analyzers, mappers, and workbook writer.
 
+## JSP recovery and diagnostics
+
+JSP analysis first uses the PMD parser, including recognized in-memory normalization of certain
+legacy constructs. If parsing fails, the analyzer may recover facts from the original source.
+Recovered output is reported as a warning (`PARSE_ERROR`), not as a clean parse: recovery is
+best-effort and may omit or misinterpret constructs, so review the workbook against the source.
+Files that cannot be recovered are reported as failures; processing continues for the remaining
+files. A warning still produces a workbook and does not by itself change the CLI exit code.
+
+The GUI shows a concise line for each warning or failure, including the file name, available
+location and a short reason. The CLI also reports warnings and failures. Each run attempts to
+write a detailed diagnostic log under the output directory's `logs` folder. The GUI and CLI
+report its path and visibly report any log I/O error; a log error does not change file-result exit
+semantics. Detailed diagnostics can include the original parser error and source excerpts.
+Treat the log and output directory as confidential.
+
 ## Job configuration
 
 ```json
@@ -97,7 +113,7 @@ $env:PATH = "C:\dev\jdk-21\bin;C:\dev\apache-maven-3.9.16\bin;$env:PATH"
 - Workbooks are written to a sibling temporary file and then moved into place. Failed writes leave
   the previous workbook intact.
 - Cell strings are written as text, never as formulas.
-- Progress output lists file paths and status codes, not source text.
+- Progress events list file paths and status codes; CLI diagnostics may also include source excerpts.
 - Logs and workbook output can contain analyzed source snippets; treat the output directory as
   confidential.
 

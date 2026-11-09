@@ -69,9 +69,10 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
 
         JspLanguageModule language = JspLanguageModule.getInstance();
         final PreparedJsp parserInput;
+        final String source;
         try {
-            parserInput = prepareParserInput(maskHtml5DoctypeAfterDirectives(
-                    Files.readString(sourceFile, StandardCharsets.UTF_8)));
+            source = Files.readString(sourceFile, StandardCharsets.UTF_8);
+            parserInput = prepareParserInput(maskHtml5DoctypeAfterDirectives(source));
         } catch (IOException error) {
             throw new SourceAnalysisException(sourceFile,
                     SourceAnalysisException.READ_ERROR, "", error);
@@ -110,6 +111,10 @@ public final class PmdJspAnalyzer implements SourceAnalyzer<JspFacts> {
             throw new SourceAnalysisException(sourceFile,
                     SourceAnalysisException.READ_ERROR, "", error);
         } catch (RuntimeException error) {
+            JspFacts recovered = LenientJspRecovery.recover(sourceFile, source, error.getMessage());
+            if (recovered != null) {
+                return recovered;
+            }
             throw new SourceAnalysisException(sourceFile,
                     SourceAnalysisException.PARSE_ERROR, error.getMessage(), error);
         }

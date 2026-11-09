@@ -2,10 +2,12 @@ package com.comus93.specgen.runner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -66,11 +68,8 @@ class JobRunnerTest {
     void parseFailureShowsOriginalSourceExcerptAndCaretInResult() throws IOException {
         Path module = tempDir.resolve("sources").resolve("jsp");
         Path source = write(module.resolve("Unsupported.jsp"), String.join("\n",
-                "<%@ taglib prefix=\"c\" uri=\"http://java.sun.com/jsp/jstl/core\" %>",
-                "<div <c:if test=\"\u0024{edit}\"><span>not-an-attribute</span></c:if> "
-                        + "style=\"display:flex\">",
-                "  <cpc:escv code=\"MIP-M0006\" value=\"유효 기간\" />",
-                "</div>"));
+                "",
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if>></div>"));
 
         RunSummary summary = new JobRunner().run(
                 config(SourceMode.JSP, tempDir.resolve("output"), module), event -> { });
@@ -80,8 +79,7 @@ class JobRunnerTest {
         assertEquals(SourceAnalysisException.PARSE_ERROR, failed.errorCode());
         assertTrue(failed.message().contains("Source excerpt (original JSP)"));
         assertTrue(failed.message().contains(">    2 | <div <c:if"), failed.message());
-        assertTrue(failed.message().contains("not-an-attribute"), failed.message());
-        assertTrue(failed.message().contains("MIP-M0006"), failed.message());
+        assertTrue(failed.message().contains("unsupported"), failed.message());
         assertTrue(failed.message().contains("^"), failed.message());
         assertTrue(Files.exists(source));
     }
@@ -91,8 +89,7 @@ class JobRunnerTest {
         Path module = tempDir.resolve("sources").resolve("jsp");
         write(module.resolve("01-valid.jsp"), "<html><body><input name=\"first\"/></body></html>");
         write(module.resolve("02-invalid.jsp"),
-                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if> "
-                        + "style=\"display:flex\"></div>");
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if>></div>");
         write(module.resolve("03-valid.jsp"),
                 "<html><body><a href=\"/next\">Next</a></body></html>");
         List<ProgressEvent> events = new ArrayList<>();
@@ -113,6 +110,64 @@ class JobRunnerTest {
         assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
         assertFalse(Files.exists(output.resolve("jsp").resolve("02-invalid.xls")));
         assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("03-valid.xls")));
+    }
+
+    @Test
+    void recoversPartialJspAndLogsDiagnosticsWithoutInterruptingLaterFiles() throws IOException {
+        Path module = tempDir.resolve("sources").resolve("jsp");
+        write(module.resolve("01-valid.jsp"), "<html><body><input name=\"first\"/></body></html>");
+        write(module.resolve("02-partial.jsp"), String.join("\n",
+                "<html><body>",
+                "<input name=\"before\"/>",
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if> "
+                        + "style=\"display:flex\">유효 기간</div>",
+                "<input name=\"after\"/>",
+                "</body></html>"));
+        Path invalid = write(module.resolve("03-invalid.jsp"), String.join("\n",
+                "",
+                "<div <c:if test=\"\u0024{edit}\"><span>unsupported</span></c:if>></div>"));
+        write(module.resolve("04-valid.jsp"), "<html><body><a href=\"/next\">Next</a></body></html>");
+        Path output = tempDir.resolve("output");
+        List<ProgressEvent> events = new ArrayList<>();
+        SourceAnalysisException diagnostic = assertThrows(SourceAnalysisException.class,
+                () -> new PmdJspAnalyzer().analyze(invalid));
+
+        RunSummary summary = new JobRunner().run(config(SourceMode.JSP, output, module), events::add);
+
+        assertEquals(4, summary.totalCount());
+        assertEquals(2, summary.successCount());
+        assertEquals(1, summary.warningCount());
+        assertEquals(1, summary.failureCount());
+        List<FileResult.FileStatus> statuses = List.of(FileResult.FileStatus.SUCCESS,
+                FileResult.FileStatus.WARNING, FileResult.FileStatus.FAILED, FileResult.FileStatus.SUCCESS);
+        assertEquals(statuses, summary.results().stream().map(FileResult::status).toList());
+        assertEquals(statuses, events.stream().map(ProgressEvent::status).toList());
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("01-valid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("02-partial.xls")));
+        assertFalse(Files.exists(output.resolve("jsp").resolve("03-invalid.xls")));
+        assertTrue(Files.isRegularFile(output.resolve("jsp").resolve("04-valid.xls")));
+
+        FileResult recovered = summary.results().get(1);
+        assertEquals(SourceAnalysisException.PARSE_ERROR, recovered.errorCode());
+        assertTrue(recovered.message().contains("Source excerpt (original JSP)"), recovered.message());
+        FileResult failed = summary.results().get(2);
+        assertEquals(SourceAnalysisException.PARSE_ERROR, failed.errorCode());
+        assertTrue(failed.message().contains("Source excerpt (original JSP)"), failed.message());
+        Path logs = output.resolve("logs");
+        assertTrue(Files.isDirectory(logs));
+        try (var paths = Files.walk(logs)) {
+            List<String> logContents = paths.filter(Files::isRegularFile).map(path -> {
+                try {
+                    return Files.readString(path, StandardCharsets.UTF_8);
+                } catch (IOException error) {
+                    throw new UncheckedIOException(error);
+                }
+            }).toList();
+            assertTrue(logContents.stream().anyMatch(log -> log.contains(diagnostic.getMessage())
+                    && log.contains(failed.message())
+                    && log.contains("unsupported") && log.contains("^")
+                    && log.contains(recovered.message()) && log.contains("유효 기간")), logContents.toString());
+        }
     }
 
     @Test
@@ -214,7 +269,42 @@ class JobRunnerTest {
         assertEquals(0, summary.failureCount());
         assertTrue(summary.outputFiles().isEmpty());
         assertEquals(0, progressCalls.get());
-        assertFalse(Files.exists(output));
+        assertTrue(Files.isRegularFile(summary.logFile()));
+        assertEquals("", summary.logError());
+    }
+
+    @Test
+    void createsDistinctLogsForConsecutiveEmptyRuns() throws IOException {
+        Path module = tempDir.resolve("sources").resolve("empty");
+        Files.createDirectories(module);
+        JobConfig config = config(SourceMode.JAVA, tempDir.resolve("output"), module);
+
+        RunSummary first = new JobRunner().run(config, event -> { });
+        RunSummary second = new JobRunner().run(config, event -> { });
+
+        assertFalse(first.logFile().equals(second.logFile()));
+        assertTrue(Files.isRegularFile(first.logFile()));
+        assertTrue(Files.isRegularFile(second.logFile()));
+        assertTrue(first.logFile().getFileName().toString()
+                .matches("specgen-\\d{8}-\\d{6}(-\\d+)?\\.log"));
+        assertTrue(Files.readString(first.logFile(), StandardCharsets.UTF_8).contains("total=0"));
+        assertEquals("", first.logError());
+        assertEquals("", second.logError());
+    }
+
+    @Test
+    void logCreationFailureDoesNotPreventWorkbookGeneration() throws IOException {
+        Path module = tempDir.resolve("sources").resolve("module");
+        write(module.resolve("Valid.java"), "class Valid {}");
+        Path output = tempDir.resolve("output");
+        write(output.resolve("logs"), "blocks log directory");
+
+        RunSummary summary = new JobRunner().run(config(SourceMode.JAVA, output, module), event -> { });
+
+        assertEquals(1, summary.successCount());
+        assertTrue(Files.isRegularFile(summary.results().get(0).outputFile()));
+        assertEquals(null, summary.logFile());
+        assertFalse(summary.logError().isEmpty());
     }
 
     @Test

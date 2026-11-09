@@ -94,6 +94,12 @@ public final class SpecGeneratorApp {
                 + summary.successCount() + " succeeded, "
                 + summary.warningCount() + " warning(s), "
                 + summary.failureCount() + " failed.");
+        if (summary.logFile() != null) {
+            out.println("Log file: " + summary.logFile());
+        }
+        if (!summary.logError().isEmpty()) {
+            err.println("Log I/O error: " + summary.logError());
+        }
         int generated = summary.successCount() + summary.warningCount();
         if (summary.hasFailures() && generated > 0) {
             out.println("Partial success: " + generated
