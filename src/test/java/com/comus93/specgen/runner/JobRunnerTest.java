@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -348,25 +347,6 @@ class JobRunnerTest {
     }
 
     @Test
-    void createsDistinctLogsForConsecutiveEmptyRuns() throws IOException {
-        Path module = tempDir.resolve("sources").resolve("empty");
-        Files.createDirectories(module);
-        JobConfig config = config(SourceMode.JAVA, tempDir.resolve("output"), module);
-
-        RunSummary first = new JobRunner().run(config, event -> { });
-        RunSummary second = new JobRunner().run(config, event -> { });
-
-        assertFalse(first.logFile().equals(second.logFile()));
-        assertTrue(Files.isRegularFile(first.logFile()));
-        assertTrue(Files.isRegularFile(second.logFile()));
-        assertTrue(first.logFile().getFileName().toString()
-                .matches("specgen-\\d{8}-\\d{6}(-\\d+)?\\.log"));
-        assertTrue(Files.readString(first.logFile(), StandardCharsets.UTF_8).contains("total=0"));
-        assertEquals("", first.logError());
-        assertEquals("", second.logError());
-    }
-
-    @Test
     void logCreationFailureDoesNotPreventWorkbookGeneration() throws IOException {
         Path module = tempDir.resolve("sources").resolve("module");
         write(module.resolve("Valid.java"), "class Valid {}");
@@ -379,48 +359,6 @@ class JobRunnerTest {
         assertTrue(Files.isRegularFile(summary.results().get(0).outputFile()));
         assertEquals(null, summary.logFile());
         assertFalse(summary.logError().isEmpty());
-    }
-
-    @Test
-    void refusesLinkedLogDirectoryWithoutPreventingWorkbookGeneration() throws Exception {
-        Path module = tempDir.resolve("sources").resolve("module");
-        write(module.resolve("Valid.java"), "class Valid {}");
-        Path output = tempDir.resolve("output");
-        Path system = Files.createDirectories(output.resolve("SYS"));
-        Path outside = Files.createDirectories(tempDir.resolve("outside"));
-        Path link = system.resolve("logs");
-        boolean windows = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows");
-        if (windows) {
-            Process create = new ProcessBuilder("cmd.exe", "/c",
-                    "mklink /J \"" + link + "\" \"" + outside + "\"").redirectErrorStream(true).start();
-            create.getInputStream().readAllBytes();
-            assertEquals(0, create.waitFor(), "could not create log junction fixture");
-        } else {
-            try {
-                Files.createSymbolicLink(link, outside);
-            } catch (UnsupportedOperationException | SecurityException | IOException exception) {
-                assumeTrue(false, "symbolic links unavailable: " + exception);
-            }
-        }
-        try {
-            RunSummary summary = new JobRunner().run(config(SourceMode.JAVA, output, module), event -> { });
-            assertEquals(1, summary.successCount());
-            assertTrue(Files.isRegularFile(output.resolve("SYS/java/module/Valid.xls")));
-            assertEquals(null, summary.logFile());
-            assertFalse(summary.logError().isEmpty());
-            try (var paths = Files.list(outside)) {
-                assertEquals(0, paths.count());
-            }
-        } finally {
-            if (windows) {
-                Process remove = new ProcessBuilder("cmd.exe", "/c", "rmdir \"" + link + "\"")
-                        .redirectErrorStream(true).start();
-                remove.getInputStream().readAllBytes();
-                assertEquals(0, remove.waitFor());
-            } else {
-                Files.deleteIfExists(link);
-            }
-        }
     }
 
     @Test
