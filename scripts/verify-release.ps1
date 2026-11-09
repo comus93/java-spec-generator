@@ -119,9 +119,9 @@ if (Test-Path -LiteralPath $jar) {
     $javaCount = Count-Workbooks -Directory $javaOutput
     $jspCount = Count-Workbooks -Directory $jspOutput
     if ($javaExit -eq 0 -and $jspExit -eq 0 -and $javaCount -eq 2 -and $jspCount -eq 2) {
-        Add-Result 'CLI generation on JDK 21' 'PASS' "Java=$javaCount workbook(s), JSP=$jspCount workbook(s), exit codes 0/0."
+        Add-Result 'Java/JSP CLI workbook generation' 'PASS' "Java=$javaCount workbook(s), JSP=$jspCount workbook(s), exit codes 0/0."
     } else {
-        Add-Result 'CLI generation on JDK 21' 'FAIL' "exit codes $javaExit/$jspExit, workbooks $javaCount/$jspCount."
+        Add-Result 'Java/JSP CLI workbook generation' 'FAIL' "exit codes $javaExit/$jspExit, workbooks $javaCount/$jspCount."
     }
 
     & $java -jar $jar generate --config $javaJob *>&1 | Out-Null
@@ -133,7 +133,7 @@ if (Test-Path -LiteralPath $jar) {
         Add-Result 'Repeated overwrite' 'FAIL' "exit=$repeatExit, temporary files=$($temporaryFiles.Count)."
     }
 } else {
-    Add-Result 'CLI generation on JDK 21' 'FAIL' 'Executable JAR is unavailable.'
+    Add-Result 'Java/JSP CLI workbook generation' 'FAIL' 'Executable JAR is unavailable.'
     Add-Result 'Repeated overwrite' 'FAIL' 'Executable JAR is unavailable.'
 }
 
@@ -158,12 +158,12 @@ if (Test-Path -LiteralPath $appCli) {
     $appExit = $LASTEXITCODE
     $appCount = Count-Workbooks -Directory $appOutput
     if ($appExit -eq 0 -and $appCount -eq 2) {
-        Add-Result 'App-image CLI without Java PATH' 'PASS' "Bundled runtime generated $appCount workbook(s)." -Category 'Deployment'
+        Add-Result 'Packaged CLI workbook generation' 'PASS' "Bundled runtime generated $appCount workbook(s)." -Category 'Deployment'
     } else {
-        Add-Result 'App-image CLI without Java PATH' 'FAIL' "exit=$appExit, workbooks=$appCount." -Category 'Deployment'
+        Add-Result 'Packaged CLI workbook generation' 'FAIL' "exit=$appExit, workbooks=$appCount." -Category 'Deployment'
     }
 } else {
-    Add-Result 'App-image CLI without Java PATH' 'BLOCKED' "App-image CLI is missing: $appCli" -Category 'Deployment'
+    Add-Result 'Packaged CLI workbook generation' 'BLOCKED' "App-image CLI is missing: $appCli" -Category 'Deployment'
 }
 
 if (Test-Path -LiteralPath $appGui) {
