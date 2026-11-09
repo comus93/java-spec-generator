@@ -150,7 +150,7 @@ The released source is organized into scanner, parser, structured-facts, mapper,
 
 **v1.0.0-rc.5 is a pre-release**, not a general-availability or production-certified release.
 
-- **Output layout patch (v1.0.0-rc.5): 86 targeted tests passed, 0 failed, 3 Windows symlink tests skipped** due to unavailable symlink-creation privileges; junction safety tests passed. JAR smoke: identical Java/JSP module and source names generated separate Excel workbooks plus shared system-level logs.
+- **Output layout patch (v1.0.0-rc.5): 89/89 targeted tests passed, 0 failed, 0 skipped on an AgentDock-run MCSVR retest.** The original OMP-run test process skipped three Windows symbolic-link cases because of insufficient symlink privileges; all three passed when rerun with an authorized AgentDock execution context. JAR smoke verified identical Java/JSP module and source names generated separate Excel workbooks plus shared system-level logs.
 - The **v1.0.0-rc.4 JSP recovery** was previously validated with 43 focused tests and a mixed valid/recovered/failed batch.
 - **91 automated Maven tests passed** on the previous v1.0.0-rc.1 baseline; the full suite was not rerun for this focused patch.
 - An independent end-to-end test processed **8 Java and 5 JSP files** from [SpringMvcStepByStep](https://github.com/in28minutes/SpringMvcStepByStep), generating **26 Excel workbooks** across the two supported formats.
